@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
@@ -27,6 +28,7 @@ import {
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 import { adminApi, AdminUser, SystemSettings } from '../lib/adminApi'
+import { useAuthStore } from '../stores/auth'
 
 type TabId = 'overview' | 'users' | 'content' | 'settings' | 'logs'
 
@@ -44,7 +46,13 @@ const ROLE_COLORS: Record<string, string> = {
 
 export default function AdminDashboard() {
   const queryClient = useQueryClient()
+  const user = useAuthStore((s) => s.user)
   const [activeTab, setActiveTab] = useState<TabId>('overview')
+
+  // Role verification - only ADMIN can access
+  if (!user || user.role !== 'ADMIN') {
+    return <Navigate to="/dashboard" replace />
+  }
   const [userSearch, setUserSearch] = useState('')
   const [userRoleFilter, setUserRoleFilter] = useState('')
   const [showUserModal, setShowUserModal] = useState(false)

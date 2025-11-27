@@ -1,11 +1,15 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 
 export const authRouter = Router();
+
+// Bcrypt configuration
+const SALT_ROUNDS = 12;
 
 // Validation schemas
 const loginSchema = z.object({
@@ -21,14 +25,13 @@ const registerSchema = z.object({
   sector: z.string().optional()
 });
 
-// Simple password hashing (in production, use bcrypt)
-const hashPassword = (password: string): string => {
-  // Simple hash for demo - use bcrypt in production
-  return Buffer.from(password).toString('base64');
+// Secure password hashing with bcrypt
+const hashPassword = async (password: string): Promise<string> => {
+  return bcrypt.hash(password, SALT_ROUNDS);
 };
 
-const verifyPassword = (password: string, hash: string): boolean => {
-  return hashPassword(password) === hash;
+const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
+  return bcrypt.compare(password, hash);
 };
 
 // POST /api/auth/login
@@ -40,7 +43,7 @@ authRouter.post('/login', async (req: Request, res: Response, next: NextFunction
       where: { email }
     });
 
-    if (!user || !verifyPassword(password, user.passwordHash)) {
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
       throw new AppError('Invalid email or password', 401);
     }
 
@@ -92,7 +95,7 @@ authRouter.post('/register', async (req: Request, res: Response, next: NextFunct
     const user = await prisma.user.create({
       data: {
         email: data.email,
-        passwordHash: hashPassword(data.password),
+        passwordHash: await hashPassword(data.password),
         firstName: data.firstName,
         lastName: data.lastName,
         sector: data.sector

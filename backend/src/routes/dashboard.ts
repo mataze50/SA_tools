@@ -237,6 +237,128 @@ dashboardRouter.post('/feedback', authenticate, async (req: AuthRequest, res: Re
   }
 });
 
+// GET /api/dashboard/manager-stats - Stats for managers
+dashboardRouter.get('/manager-stats', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role !== 'MANAGER' && req.user!.role !== 'ADMIN') {
+      throw new AppError('Managers only', 403);
+    }
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+
+    const [
+      totalPendingValidations,
+      validationsThisMonth,
+      validationsThisWeek,
+      totalValidatedSheets,
+      totalRejectedSheets,
+      totalSheetsNeedingChanges,
+      recentValidations,
+      teamSheets
+    ] = await Promise.all([
+      // Pending validations count
+      prisma.sheet.count({
+        where: { status: 'PENDING_VALIDATION' }
+      }),
+
+      // Validations done this month
+      prisma.sheetValidation.count({
+        where: {
+          validatorId: req.user!.id,
+          createdAt: { gte: startOfMonth }
+        }
+      }),
+
+      // Validations done this week
+      prisma.sheetValidation.count({
+        where: {
+          validatorId: req.user!.id,
+          createdAt: { gte: startOfWeek }
+        }
+      }),
+
+      // Total sheets validated (approved)
+      prisma.sheetValidation.count({
+        where: {
+          validatorId: req.user!.id,
+          status: 'APPROVED'
+        }
+      }),
+
+      // Total sheets rejected
+      prisma.sheetValidation.count({
+        where: {
+          validatorId: req.user!.id,
+          status: 'REJECTED'
+        }
+      }),
+
+      // Sheets needing changes
+      prisma.sheetValidation.count({
+        where: {
+          validatorId: req.user!.id,
+          status: 'NEEDS_CHANGES'
+        }
+      }),
+
+      // Recent validations by this manager
+      prisma.sheetValidation.findMany({
+        where: { validatorId: req.user!.id },
+        include: {
+          sheet: {
+            select: { title: true, userId: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      }),
+
+      // Team activity (all sheets created this month)
+      prisma.sheet.count({
+        where: {
+          createdAt: { gte: startOfMonth }
+        }
+      })
+    ]);
+
+    // Calculate approval rate
+    const totalReviewed = totalValidatedSheets + totalRejectedSheets + totalSheetsNeedingChanges;
+    const approvalRate = totalReviewed > 0
+      ? Math.round((totalValidatedSheets / totalReviewed) * 100)
+      : 0;
+
+    res.json({
+      success: true,
+      data: {
+        overview: {
+          pendingValidations: totalPendingValidations,
+          validationsThisMonth,
+          validationsThisWeek,
+          teamSheetsThisMonth: teamSheets
+        },
+        myActivity: {
+          totalApproved: totalValidatedSheets,
+          totalRejected: totalRejectedSheets,
+          totalNeedsChanges: totalSheetsNeedingChanges,
+          approvalRate
+        },
+        recentValidations: recentValidations.map(v => ({
+          id: v.id,
+          sheetTitle: v.sheet.title,
+          status: v.status,
+          createdAt: v.createdAt,
+          comments: v.comments
+        }))
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/dashboard/pending-validations - For managers
 dashboardRouter.get('/pending-validations', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { dashboardApi } from '../lib/api'
@@ -41,6 +41,11 @@ export default function ManagerDashboard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = useAuthStore((s) => s.user)
+
+  // Role verification - only MANAGER and ADMIN can access
+  if (!user || (user.role !== 'MANAGER' && user.role !== 'ADMIN')) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   const [selectedSheet, setSelectedSheet] = useState<PendingSheet | null>(null)
   const [validationStatus, setValidationStatus] = useState<'APPROVED' | 'REJECTED' | 'NEEDS_CHANGES'>('APPROVED')
