@@ -475,10 +475,12 @@ model ExportLog {
   exportedAt  DateTime     @default(now())
 
   // Relations
-  sheetId     String
+  sheetId     String?      // For sheet exports
+  workshopId  String?      // For workshop exports (Sprint 16)
   userId      String
 
   @@index([sheetId])
+  @@index([workshopId])
   @@index([userId])
   @@index([exportType])
   @@map("export_logs")

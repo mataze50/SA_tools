@@ -320,6 +320,21 @@ export const workshopsApi = {
   duplicate: (id: string) => api.post(`/workshops/${id}/duplicate`)
 }
 
+// Workshop Export (Sprint 16)
+export const workshopExportApi = {
+  scorm: (workshopId: string, options?: { version?: string; organization?: string; masteryScore?: number }) =>
+    api.get(`/export/workshop-scorm/${workshopId}`, {
+      responseType: 'blob',
+      params: options
+    }),
+
+  scormValidate: (workshopId: string) =>
+    api.post(`/export/workshop-scorm/validate/${workshopId}`),
+
+  scormPreview: (workshopId: string) =>
+    api.get(`/export/workshop-scorm/preview/${workshopId}`)
+}
+
 // Workshop Generation (Sprint 16)
 export const workshopGenerationApi = {
   start: (data: {

@@ -18,6 +18,7 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { exportSheetAsScorm } from '../scorm/services/scormExportService.js';
+import { exportWorkshopAsScorm } from '../scorm/services/workshopScormExportService.js';
 
 export const exportRouter = Router();
 
@@ -504,6 +505,196 @@ exportRouter.post('/scorm/validate/:sheetId', authenticate, async (req: AuthRequ
           situationsCount: situations.length,
           phasesCount: flow.length,
           questionsCount: questions.length
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// WORKSHOP SCORM EXPORT (Sprint 16)
+// ============================================
+
+// GET /api/export/workshop-scorm/:workshopId - Export workshop as SCORM package
+exportRouter.get('/workshop-scorm/:workshopId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { version = '1.2', organization, masteryScore } = req.query;
+
+    // Validate SCORM version
+    const validVersions = ['1.2', '2004-3rd', '2004-4th'];
+    if (!validVersions.includes(version as string)) {
+      throw new AppError('Invalid SCORM version. Use: 1.2, 2004-3rd, or 2004-4th', 400);
+    }
+
+    const result = await exportWorkshopAsScorm({
+      workshopId: req.params.workshopId,
+      userId: req.user!.id,
+      version: version as '1.2' | '2004-3rd' | '2004-4th',
+      organization: organization as string || 'HARMONIA GROUP',
+      masteryScore: masteryScore ? parseInt(masteryScore as string, 10) : 80
+    });
+
+    if (!result.result.success) {
+      throw new AppError(result.result.error || 'SCORM export failed', 400);
+    }
+
+    if (!result.buffer) {
+      throw new AppError('Failed to generate SCORM package', 500);
+    }
+
+    // Send ZIP file
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${result.result.fileName}"`);
+    res.setHeader('Content-Length', result.buffer.length);
+    res.send(result.buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/workshop-scorm/preview/:workshopId - Preview workshop SCORM module
+exportRouter.get('/workshop-scorm/preview/:workshopId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const workshop = await prisma.workshop.findFirst({
+      where: {
+        id: req.params.workshopId,
+        userId: req.user!.id
+      },
+      include: {
+        competencies: {
+          include: {
+            competency: true
+          }
+        }
+      }
+    });
+
+    if (!workshop) {
+      throw new AppError('Workshop not found', 404);
+    }
+
+    const timeline = workshop.timeline as any[] || [];
+    const activities = workshop.activities as any[] || [];
+    const evaluation = workshop.evaluation as any || {};
+
+    // Validation checks
+    const errors: string[] = [];
+    if (!workshop.title) errors.push('Titre manquant');
+    if (timeline.length === 0) errors.push('Deroulé manquant');
+    if (activities.length === 0) errors.push('Activites manquantes');
+    if (!workshop.competencies || workshop.competencies.length === 0) errors.push('Competences manquantes');
+
+    res.json({
+      success: true,
+      data: {
+        title: workshop.title,
+        competencies: workshop.competencies.map((wc: any) => ({
+          code: wc.competency.code,
+          title: wc.competency.title,
+          isPrimary: wc.isPrimary
+        })),
+        phasesCount: timeline.length,
+        activitiesCount: activities.length,
+        estimatedDuration: workshop.duration,
+        canExport: errors.length === 0,
+        errors,
+        exportFormats: [
+          { version: '1.2', label: 'SCORM 1.2 (compatibilite maximale)' },
+          { version: '2004-3rd', label: 'SCORM 2004 3rd Edition' },
+          { version: '2004-4th', label: 'SCORM 2004 4th Edition' }
+        ]
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/export/workshop-scorm/validate/:workshopId - Validate workshop for SCORM export
+exportRouter.post('/workshop-scorm/validate/:workshopId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const workshop = await prisma.workshop.findFirst({
+      where: {
+        id: req.params.workshopId,
+        userId: req.user!.id
+      },
+      include: {
+        competencies: {
+          include: {
+            competency: true
+          }
+        }
+      }
+    });
+
+    if (!workshop) {
+      throw new AppError('Workshop not found', 404);
+    }
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    const timeline = workshop.timeline as any[] || [];
+    const activities = workshop.activities as any[] || [];
+    const introduction = workshop.introduction as any || {};
+    const evaluation = workshop.evaluation as any || {};
+
+    // Validation checks
+    if (!workshop.title || workshop.title.length < 3) {
+      errors.push('Titre manquant ou trop court');
+    }
+
+    if (!workshop.competencies || workshop.competencies.length === 0) {
+      errors.push('Aucune competence associee');
+    }
+
+    if (timeline.length === 0) {
+      errors.push('Deroulé pedagogique manquant');
+    }
+
+    if (activities.length === 0) {
+      errors.push('Aucune activite definie');
+    } else if (activities.length < 3) {
+      warnings.push('Recommandation: au moins 3 activites pour un atelier complet');
+    }
+
+    const objectives = introduction.objectives || [];
+    if (objectives.length === 0) {
+      warnings.push('Objectifs pedagogiques non definis');
+    } else if (objectives.length < 2) {
+      warnings.push('Recommandation: au moins 2 objectifs pedagogiques');
+    }
+
+    const criteria = evaluation.criteria || [];
+    if (criteria.length === 0) {
+      warnings.push('Criteres d\'evaluation non definis');
+    }
+
+    // Check activities have required fields
+    activities.forEach((act: any, i: number) => {
+      if (!act.title) {
+        errors.push(`Activite ${i + 1}: titre manquant`);
+      }
+      if (!act.duration || act.duration <= 0) {
+        warnings.push(`Activite ${i + 1}: duree non specifiee`);
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        valid: errors.length === 0,
+        errors,
+        warnings,
+        summary: {
+          title: workshop.title,
+          competenciesCount: workshop.competencies?.length || 0,
+          phasesCount: timeline.length,
+          activitiesCount: activities.length,
+          objectivesCount: objectives.length,
+          duration: workshop.duration
         }
       }
     });

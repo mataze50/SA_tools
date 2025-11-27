@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { workshopsApi, exportApi } from '../lib/api'
+import { workshopsApi, workshopExportApi } from '../lib/api'
 import {
   ArrowLeftIcon,
   ClockIcon,
@@ -19,7 +19,9 @@ import {
   ChatBubbleLeftRightIcon,
   PlayIcon,
   ChevronDownIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  ArrowDownTrayIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -52,6 +54,8 @@ export default function WorkshopEditor() {
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'activities' | 'materials' | 'evaluation' | 'notes'>('overview')
   const [editingSection, setEditingSection] = useState<string | null>(null)
   const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set())
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Fetch workshop
   const { data: workshopData, isLoading, error } = useQuery({
@@ -122,6 +126,30 @@ export default function WorkshopEditor() {
     return labels[level] || ''
   }
 
+  const handleExportScorm = async (version: string = '1.2') => {
+    if (!id) return
+    setIsExporting(true)
+    setShowExportMenu(false)
+
+    try {
+      const response = await workshopExportApi.scorm(id, { version })
+      const blob = new Blob([response.data], { type: 'application/zip' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `atelier_${workshop?.title?.substring(0, 30) || 'export'}_SCORM${version.replace(/[.-]/g, '')}.zip`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('Export SCORM telecharge !')
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Erreur lors de l\'export SCORM')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -172,11 +200,48 @@ export default function WorkshopEditor() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button className="btn-secondary flex items-center gap-2">
-              <DocumentArrowDownIcon className="w-4 h-4" />
-              Exporter
+          <div className="flex items-center gap-2 relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={isExporting}
+              className="btn-secondary flex items-center gap-2"
+            >
+              {isExporting ? (
+                <ArrowPathIcon className="w-4 h-4 animate-spin" />
+              ) : (
+                <ArrowDownTrayIcon className="w-4 h-4" />
+              )}
+              {isExporting ? 'Export...' : 'Exporter'}
+              <ChevronDownIcon className="w-4 h-4" />
             </button>
+
+            {showExportMenu && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                <div className="p-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 px-3 py-2 font-medium">
+                    Export SCORM (e-learning)
+                  </p>
+                  <button
+                    onClick={() => handleExportScorm('1.2')}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                  >
+                    SCORM 1.2 (compatibilite max)
+                  </button>
+                  <button
+                    onClick={() => handleExportScorm('2004-3rd')}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                  >
+                    SCORM 2004 3rd Edition
+                  </button>
+                  <button
+                    onClick={() => handleExportScorm('2004-4th')}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                  >
+                    SCORM 2004 4th Edition
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
