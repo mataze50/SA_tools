@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { workshopsApi } from '../lib/api'
+import { workshopGenerationApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import CompetencySelector from '../components/CompetencySelector'
 import {
@@ -65,11 +65,10 @@ export default function WorkshopNew() {
   const [participantMax, setParticipantMax] = useState(12)
   const [selectedCompetencies, setSelectedCompetencies] = useState<SelectedCompetency[]>([])
 
-  // Create workshop mutation
-  const createWorkshop = useMutation({
-    mutationFn: () => workshopsApi.create({
-      title: subject,
-      description,
+  // Start generation mutation
+  const startGeneration = useMutation({
+    mutationFn: () => workshopGenerationApi.start({
+      subject,
       sector,
       audienceType,
       format,
@@ -79,11 +78,11 @@ export default function WorkshopNew() {
       competencyIds: selectedCompetencies.map(c => c.id)
     }),
     onSuccess: (response) => {
-      toast.success('Atelier cree avec succes !')
-      navigate(`/workshops/${response.data.data.id}`)
+      toast.success('Generation lancee !')
+      navigate(`/workshops/generate/${response.data.data.sessionId}`)
     },
     onError: () => {
-      toast.error('Erreur lors de la creation')
+      toast.error('Erreur lors du lancement de la generation')
     }
   })
 
@@ -106,7 +105,7 @@ export default function WorkshopNew() {
     if (step < 4) {
       setStep(step + 1)
     } else {
-      createWorkshop.mutate()
+      startGeneration.mutate()
     }
   }
 
@@ -455,13 +454,13 @@ export default function WorkshopNew() {
 
           <button
             onClick={handleNext}
-            disabled={!canProceed() || createWorkshop.isPending}
+            disabled={!canProceed() || startGeneration.isPending}
             className="btn-primary flex items-center gap-2"
           >
-            {createWorkshop.isPending && (
+            {startGeneration.isPending && (
               <ArrowPathIcon className="w-4 h-4 animate-spin" />
             )}
-            {step === 4 ? 'Creer l\'atelier' : 'Suivant'}
+            {step === 4 ? 'Generer l\'atelier' : 'Suivant'}
           </button>
         </div>
       </div>

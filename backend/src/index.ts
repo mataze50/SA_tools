@@ -25,6 +25,7 @@ import { collaborationRouter } from './routes/collaboration.js';
 import { collaborationService } from './services/websocket.js';
 import { adminRouter } from './routes/admin.js';
 import { workshopsRouter } from './routes/workshops.js';
+import { workshopGenerationRouter } from './routes/workshop-generation.js';
 
 dotenv.config();
 
@@ -64,6 +65,7 @@ app.use('/api/search', searchRouter);
 app.use('/api/collaboration', collaborationRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/workshops', workshopsRouter);
+app.use('/api/workshop-generation', workshopGenerationRouter);
 
 // Error handling
 app.use(errorHandler);

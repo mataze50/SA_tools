@@ -17,6 +17,8 @@ import Analytics from './pages/Analytics'
 import SearchPage from './pages/SearchPage'
 import AdminDashboard from './pages/AdminDashboard'
 import WorkshopNew from './pages/WorkshopNew'
+import WorkshopGeneration from './pages/WorkshopGeneration'
+import WorkshopEditor from './pages/WorkshopEditor'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -52,6 +54,8 @@ export default function App() {
         <Route path="admin" element={<AdminDashboard />} />
         {/* Workshop routes - Sprint 16 */}
         <Route path="workshops/new" element={<WorkshopNew />} />
+        <Route path="workshops/generate/:sessionId" element={<WorkshopGeneration />} />
+        <Route path="workshops/:id" element={<WorkshopEditor />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
