@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { authRouter } from './routes/auth.js';
@@ -20,6 +21,8 @@ import { feedbackRouter } from './routes/feedback.js';
 import { templatesRouter } from './routes/templates.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { searchRouter } from './routes/search.js';
+import { collaborationRouter } from './routes/collaboration.js';
+import { collaborationService } from './services/websocket.js';
 
 dotenv.config();
 
@@ -56,14 +59,22 @@ app.use('/api/feedback', feedbackRouter);
 app.use('/api/templates', templatesRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/collaboration', collaborationRouter);
 
 // Error handling
 app.use(errorHandler);
 
+// Create HTTP server for WebSocket support
+const server = createServer(app);
+
+// Initialize WebSocket collaboration service
+collaborationService.initialize(server);
+
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🏭 Atelier Forge API running on port ${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   WebSocket: ws://localhost:${PORT}/ws/collab`);
 });
 
 export default app;

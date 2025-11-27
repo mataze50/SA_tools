@@ -7,6 +7,9 @@ import FeedbackSummary from '../components/FeedbackSummary'
 import SaveAsTemplateModal from '../components/SaveAsTemplateModal'
 import ExportOptionsModal from '../components/ExportOptionsModal'
 import VersionHistoryPanel from '../components/VersionHistoryPanel'
+import CollaborationPanel from '../components/CollaborationPanel'
+import CollaboratorAvatars from '../components/CollaboratorAvatars'
+import { useCollaboration } from '../hooks/useCollaboration'
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -21,7 +24,8 @@ import {
   ChatBubbleLeftRightIcon,
   DocumentDuplicateIcon,
   ShareIcon,
-  ClockIcon
+  ClockIcon,
+  UsersIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -46,6 +50,10 @@ export default function EditSheet() {
   const [showTemplateModal, setShowTemplateModal] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
   const [showVersionHistory, setShowVersionHistory] = useState(false)
+  const [showCollaborationPanel, setShowCollaborationPanel] = useState(false)
+
+  // Real-time collaboration
+  const collaboration = useCollaboration(id!, !!id)
 
   // Fetch sheet
   const { data: sheetData, isLoading } = useQuery({
@@ -229,8 +237,15 @@ export default function EditSheet() {
           </div>
         </div>
 
-        {/* Confidence score */}
+        {/* Collaboration & Confidence */}
         <div className="flex items-center gap-4">
+          {/* Collaborator Avatars */}
+          <CollaboratorAvatars
+            collaborators={collaboration.collaborators}
+            onOpenPanel={() => setShowCollaborationPanel(true)}
+          />
+
+          {/* Confidence score */}
           <div className="text-right">
             <p className="text-sm text-gray-500">Niveau de confiance</p>
             <p className="text-lg font-bold text-primary-600">
@@ -898,6 +913,22 @@ export default function EditSheet() {
             Historique (v{sheet.version})
           </button>
 
+          <button
+            onClick={() => setShowCollaborationPanel(true)}
+            className={clsx(
+              'btn-secondary',
+              collaboration.connected && 'ring-2 ring-green-400'
+            )}
+          >
+            <UsersIcon className="w-5 h-5 mr-2" />
+            Collaboration
+            {collaboration.collaborators.length > 1 && (
+              <span className="ml-2 px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
+                {collaboration.collaborators.length}
+              </span>
+            )}
+          </button>
+
           {sheet.status === 'DRAFT' && (
             <button
               onClick={() => submitValidation.mutate()}
@@ -996,6 +1027,21 @@ export default function EditSheet() {
         onClose={() => setShowVersionHistory(false)}
         onRestore={() => {
           queryClient.invalidateQueries({ queryKey: ['sheet', id] })
+        }}
+      />
+
+      {/* Collaboration Panel */}
+      <CollaborationPanel
+        sheetId={id!}
+        isOpen={showCollaborationPanel}
+        onClose={() => setShowCollaborationPanel(false)}
+        collaborators={collaboration.collaborators}
+        lockedSections={collaboration.lockedSections}
+        typingUsers={collaboration.typingUsers}
+        connected={collaboration.connected}
+        myColor={collaboration.myColor}
+        onAddComment={(section, content) => {
+          collaboration.addComment({ section, content })
         }}
       />
     </div>
