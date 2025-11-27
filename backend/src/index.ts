@@ -13,6 +13,8 @@ import { quizRouter } from './routes/quiz.js';
 import { exportRouter } from './routes/export.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { validationRouter } from './routes/validation.js';
+import { conversationRouter } from './routes/conversation.js';
+import { remixRouter } from './routes/remix.js';
 
 dotenv.config();
 
@@ -42,6 +44,8 @@ app.use('/api/quiz', quizRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/validation', validationRouter);
+app.use('/api/conversation', conversationRouter);
+app.use('/api/remix', remixRouter);
 
 // Error handling
 app.use(errorHandler);

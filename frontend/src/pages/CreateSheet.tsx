@@ -6,8 +6,10 @@ import { competenciesApi, generationApi } from '../lib/api'
 import {
   MagnifyingGlassIcon,
   ChevronLeftIcon,
-  SparklesIcon
+  SparklesIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
+import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 
 // Options for dropdowns
@@ -115,7 +117,7 @@ export default function CreateSheet() {
   return (
     <div className="max-w-2xl mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex items-center gap-4 mb-6">
         <button
           onClick={() => (step === 1 ? navigate('/') : setStep(step - 1))}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -127,6 +129,23 @@ export default function CreateSheet() {
           <p className="text-sm text-gray-500">Étape {step}/2</p>
         </div>
       </div>
+
+      {/* Mode switch banner */}
+      {step === 1 && (
+        <Link
+          to="/create/chat"
+          className="flex items-center justify-between p-4 mb-6 bg-gradient-to-r from-primary-50 to-purple-50 border border-primary-200 rounded-xl hover:border-primary-300 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <ChatBubbleLeftRightIcon className="w-6 h-6 text-primary-500" />
+            <div>
+              <p className="font-medium text-gray-900">Préfères-tu être guidé(e) ?</p>
+              <p className="text-sm text-gray-600">Essaie le mode conversationnel : réponds à quelques questions</p>
+            </div>
+          </div>
+          <span className="text-sm text-primary-600 font-medium">Essayer →</span>
+        </Link>
+      )}
 
       {/* Step 1: Select competency */}
       {step === 1 && (

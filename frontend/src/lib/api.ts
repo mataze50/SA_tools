@@ -151,4 +151,31 @@ export const validationApi = {
   revalidate: (sheetId: string) => api.post(`/validation/${sheetId}/revalidate`)
 }
 
+// Conversation (Mode Conversationnel)
+export const conversationApi = {
+  start: () => api.post('/conversation/start'),
+
+  get: (sessionId: string) => api.get(`/conversation/${sessionId}`),
+
+  answer: (sessionId: string, answer: string) =>
+    api.post(`/conversation/${sessionId}/answer`, { answer }),
+
+  generate: (sessionId: string) =>
+    api.post(`/conversation/${sessionId}/generate`),
+
+  assist: (sessionId: string, userMessage: string) =>
+    api.post(`/conversation/${sessionId}/ai-assist`, { userMessage })
+}
+
+// Remix (Mode Remix)
+export const remixApi = {
+  preview: (sourceSheetId: string, changes: any) =>
+    api.post('/remix/preview', { sourceSheetId, changes }),
+
+  create: (sourceSheetId: string, changes: any) =>
+    api.post('/remix/create', { sourceSheetId, changes }),
+
+  status: (sessionId: string) => api.get(`/remix/${sessionId}/status`)
+}
+
 export default api

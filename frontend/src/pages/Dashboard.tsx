@@ -11,7 +11,8 @@ import {
   FunnelIcon,
   PlusIcon,
   DocumentDuplicateIcon,
-  TrashIcon
+  TrashIcon,
+  ArrowsRightLeftIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -252,6 +253,14 @@ export default function Dashboard() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-1">
+                  <Link
+                    to={`/sheet/${sheet.id}/remix`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                    title="Remixer"
+                  >
+                    <ArrowsRightLeftIcon className="w-4 h-4 text-gray-500" />
+                  </Link>
                   <button
                     onClick={(e) => {
                       e.preventDefault()
