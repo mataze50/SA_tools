@@ -23,6 +23,7 @@ import { analyticsRouter } from './routes/analytics.js';
 import { searchRouter } from './routes/search.js';
 import { collaborationRouter } from './routes/collaboration.js';
 import { collaborationService } from './services/websocket.js';
+import { adminRouter } from './routes/admin.js';
 
 dotenv.config();
 
@@ -60,6 +61,7 @@ app.use('/api/templates', templatesRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/collaboration', collaborationRouter);
+app.use('/api/admin', adminRouter);
 
 // Error handling
 app.use(errorHandler);

@@ -10,7 +10,8 @@ import {
   ClipboardDocumentCheckIcon,
   DocumentDuplicateIcon,
   ChartBarIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  ShieldCheckIcon
 } from '@heroicons/react/24/outline'
 import NotificationsDropdown from './NotificationsDropdown'
 import clsx from 'clsx'
@@ -25,6 +26,10 @@ const navigation = [
 
 const managerNav = [
   { name: 'Validations', href: '/manager', icon: ClipboardDocumentCheckIcon }
+]
+
+const adminNav = [
+  { name: 'Admin', href: '/admin', icon: ShieldCheckIcon }
 ]
 
 export default function Layout() {
@@ -96,6 +101,29 @@ export default function Layout() {
                           isActive
                             ? 'bg-purple-50 text-purple-700'
                             : 'text-purple-600 hover:bg-purple-50'
+                        )}
+                      >
+                        <item.icon className="w-5 h-5" />
+                        {item.name}
+                      </Link>
+                    )
+                  })}
+                </>
+              )}
+              {/* Admin navigation */}
+              {user?.role === 'ADMIN' && (
+                <>
+                  {adminNav.map((item) => {
+                    const isActive = location.pathname === item.href
+                    return (
+                      <Link
+                        key={item.name}
+                        to={item.href}
+                        className={clsx(
+                          'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                          isActive
+                            ? 'bg-red-50 text-red-700'
+                            : 'text-red-600 hover:bg-red-50'
                         )}
                       >
                         <item.icon className="w-5 h-5" />
