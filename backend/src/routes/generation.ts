@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { generateSheet, validateSheet, improveSheet, regenerateSection, GenerationContext } from '../services/ai/claude.js';
+import { generateSheet, validateSheet, improveSheet, regenerateSection, preValidateSheet, GenerationContext } from '../services/ai/claude.js';
 import { enrichContext } from '../services/ai/perplexity.js';
 
 export const generationRouter = Router();
@@ -384,32 +384,62 @@ async function runGenerationPipeline(
       claudeCalls: 1
     });
 
-    // Step 3: Validation
+    // Step 3: Pre-validation (programmatic checks)
+    const preValidation = preValidateSheet(generatedContent, context);
+    console.log(`Pre-validation score: ${preValidation.score}, issues: ${preValidation.issues.length}`);
+
+    // Step 4: AI Validation (if not skipped)
     let validationResult = null;
     if (!input.skipValidation) {
       await updateSession(sessionId, { status: 'VALIDATING' });
 
       validationResult = await validateSheet(generatedContent, context);
 
+      // Merge programmatic issues with AI validation
+      if (preValidation.issues.length > 0) {
+        validationResult.issues = [
+          ...preValidation.issues,
+          ...validationResult.issues
+        ];
+        // Recalculate validity based on merged issues
+        validationResult.isValid = validationResult.issues.filter(i => i.type === 'error').length === 0;
+        // Adjust score if pre-validation found issues
+        validationResult.overallScore = Math.min(validationResult.overallScore, preValidation.score);
+      }
+
       await updateSession(sessionId, {
         validationResult,
         claudeCalls: 2
       });
+    } else {
+      // If AI validation is skipped, still use programmatic validation
+      validationResult = {
+        isValid: preValidation.isValid,
+        overallScore: preValidation.score,
+        issues: preValidation.issues,
+        suggestions: []
+      };
     }
 
-    // Step 4: Improvement (if needed)
+    // Step 5: Improvement (if needed)
     let finalContent = generatedContent;
-    if (validationResult && !validationResult.isValid) {
+    const needsImprovement = validationResult && (!validationResult.isValid || validationResult.overallScore < 80);
+
+    if (needsImprovement) {
       await updateSession(sessionId, { status: 'IMPROVING' });
 
       finalContent = await improveSheet(generatedContent, validationResult);
+
+      // Re-validate after improvement
+      const postImproveValidation = preValidateSheet(finalContent, context);
+      console.log(`Post-improvement score: ${postImproveValidation.score}`);
 
       await updateSession(sessionId, {
         claudeCalls: 3
       });
     }
 
-    // Step 5: Complete
+    // Step 6: Complete
     const endTime = new Date();
     const startTime = (await prisma.generationSession.findUnique({
       where: { id: sessionId }
