@@ -11,7 +11,11 @@ import {
   ChevronRightIcon,
   ArrowPathIcon,
   SparklesIcon,
-  PencilIcon
+  PencilIcon,
+  ClockIcon,
+  AcademicCapIcon,
+  ClipboardDocumentCheckIcon,
+  UserGroupIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -33,11 +37,26 @@ interface Suggestion {
   autoApply: boolean
 }
 
+interface ScoreBreakdown {
+  timing: number
+  bloomAlignment: number
+  smartCriteria: number
+  evaluationCoherence: number
+  situationsQuality: number
+}
+
 interface ValidationResult {
   isValid: boolean
   overallScore: number
+  scoreBreakdown?: ScoreBreakdown
   issues: ValidationIssue[]
   suggestions: Suggestion[]
+  durationCheck?: {
+    isValid: boolean
+    expected: number
+    actual: number
+    difference: number
+  }
 }
 
 type ReviewAction = 'accept' | 'modify' | 'ignore'
@@ -48,6 +67,14 @@ interface ReviewDecision {
   customValue?: string
 }
 
+const SCORE_CATEGORIES = [
+  { key: 'timing', label: 'Timing', icon: ClockIcon, max: 25, color: 'blue' },
+  { key: 'bloomAlignment', label: 'Bloom', icon: AcademicCapIcon, max: 30, color: 'purple' },
+  { key: 'smartCriteria', label: 'SMART', icon: SparklesIcon, max: 20, color: 'yellow' },
+  { key: 'evaluationCoherence', label: 'Évaluation', icon: ClipboardDocumentCheckIcon, max: 15, color: 'green' },
+  { key: 'situationsQuality', label: 'Situations', icon: UserGroupIcon, max: 10, color: 'orange' }
+]
+
 export default function ReviewWizard() {
   const { sheetId } = useParams()
   const navigate = useNavigate()
@@ -57,6 +84,7 @@ export default function ReviewWizard() {
   const [decisions, setDecisions] = useState<ReviewDecision[]>([])
   const [editingValue, setEditingValue] = useState('')
   const [isEditing, setIsEditing] = useState(false)
+  const [projectedScore, setProjectedScore] = useState<number | null>(null)
 
   // Fetch sheet
   const { data: sheetData } = useQuery({
@@ -76,6 +104,7 @@ export default function ReviewWizard() {
   const validation: ValidationResult | null = validationData?.data?.data?.validation || null
   const issues = validation?.issues || []
   const suggestions = validation?.suggestions || []
+  const scoreBreakdown = validation?.scoreBreakdown
 
   // Combine issues and suggestions for the wizard steps
   const steps = suggestions.length > 0 ? suggestions : issues.map(issue => ({
@@ -90,6 +119,21 @@ export default function ReviewWizard() {
   const currentItem = steps[currentStep]
   const totalSteps = steps.length
   const isLastStep = currentStep === totalSteps - 1
+
+  // Calculate projected score when decisions change
+  const calculateScore = useMutation({
+    mutationFn: () => validationApi.calculateScore(sheetId!, decisions),
+    onSuccess: (res) => {
+      setProjectedScore(res.data.data.projectedScore)
+    }
+  })
+
+  // Recalculate score when decisions change
+  useEffect(() => {
+    if (decisions.length > 0 && sheetId) {
+      calculateScore.mutate()
+    }
+  }, [decisions, sheetId])
 
   // Apply all decisions
   const applyDecisions = useMutation({
@@ -162,8 +206,37 @@ export default function ReviewWizard() {
     }
   }
 
+  const getCategoryIcon = (category: string) => {
+    switch (category.toLowerCase()) {
+      case 'timing':
+        return <ClockIcon className="w-5 h-5" />
+      case 'cohérence bloom':
+      case 'bloom':
+        return <AcademicCapIcon className="w-5 h-5" />
+      case 'évaluation':
+        return <ClipboardDocumentCheckIcon className="w-5 h-5" />
+      case 'situations':
+        return <UserGroupIcon className="w-5 h-5" />
+      default:
+        return <SparklesIcon className="w-5 h-5" />
+    }
+  }
+
   const getCurrentDecision = () => {
     return decisions.find(d => d.suggestionId === currentItem?.id)
+  }
+
+  const getScoreColor = (score: number) => {
+    if (score >= 85) return 'text-green-600'
+    if (score >= 70) return 'text-yellow-600'
+    return 'text-red-600'
+  }
+
+  const getProgressColor = (score: number, max: number) => {
+    const percentage = (score / max) * 100
+    if (percentage >= 80) return 'bg-green-500'
+    if (percentage >= 50) return 'bg-yellow-500'
+    return 'bg-red-500'
   }
 
   if (isLoading) {
@@ -201,16 +274,42 @@ export default function ReviewWizard() {
         <div className="card text-center py-12">
           <CheckCircleIcon className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            🎉 Ta fiche est prête !
+            Ta fiche est prête !
           </h2>
           <p className="text-gray-600 mb-2">
-            Niveau de confiance : <span className="font-bold text-primary-600">{validation.overallScore}%</span>
+            Niveau de confiance : <span className={clsx('font-bold', getScoreColor(validation.overallScore))}>{validation.overallScore}%</span>
           </p>
           <p className="text-gray-500 mb-6">
             Aucun problème détecté. Tu peux passer à l'édition.
           </p>
+
+          {/* Score breakdown */}
+          {scoreBreakdown && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg text-left">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Détail du score</h3>
+              <div className="space-y-2">
+                {SCORE_CATEGORIES.map(cat => {
+                  const score = scoreBreakdown[cat.key as keyof ScoreBreakdown] || 0
+                  return (
+                    <div key={cat.key} className="flex items-center gap-2">
+                      <cat.icon className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm text-gray-600 w-24">{cat.label}</span>
+                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={clsx('h-full rounded-full', getProgressColor(score, cat.max))}
+                          style={{ width: `${(score / cat.max) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-medium w-12 text-right">{score}/{cat.max}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <button onClick={() => navigate(`/sheet/${sheetId}`)} className="btn-primary">
-            Aller à l'éditeur →
+            Aller à l'éditeur
           </button>
         </div>
       </div>
@@ -218,7 +317,7 @@ export default function ReviewWizard() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-3xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <button
@@ -233,11 +332,55 @@ export default function ReviewWizard() {
             {sheet?.title || 'Fiche de conception'}
           </p>
         </div>
+
+        {/* Score display with projection */}
         <div className="text-right">
-          <p className="text-sm text-gray-500">Score actuel</p>
-          <p className="text-lg font-bold text-primary-600">{validation.overallScore}%</p>
+          <p className="text-sm text-gray-500">Score</p>
+          <div className="flex items-center gap-2">
+            <span className={clsx('text-lg font-bold', getScoreColor(validation.overallScore))}>
+              {validation.overallScore}%
+            </span>
+            {projectedScore !== null && projectedScore !== validation.overallScore && (
+              <>
+                <span className="text-gray-400">→</span>
+                <span className={clsx('text-lg font-bold', getScoreColor(projectedScore))}>
+                  {projectedScore}%
+                </span>
+              </>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Score breakdown sidebar */}
+      {scoreBreakdown && (
+        <div className="card !p-4 mb-6 bg-gray-50">
+          <div className="flex flex-wrap gap-4">
+            {SCORE_CATEGORIES.map(cat => {
+              const score = scoreBreakdown[cat.key as keyof ScoreBreakdown] || 0
+              const isOk = score === cat.max
+              return (
+                <div
+                  key={cat.key}
+                  className={clsx(
+                    'flex items-center gap-2 px-3 py-2 rounded-lg',
+                    isOk ? 'bg-green-100 text-green-700' : 'bg-white border border-gray-200'
+                  )}
+                >
+                  <cat.icon className="w-4 h-4" />
+                  <span className="text-sm font-medium">{cat.label}</span>
+                  <span className={clsx(
+                    'text-sm',
+                    isOk ? 'text-green-600' : score > 0 ? 'text-yellow-600' : 'text-red-600'
+                  )}>
+                    {score}/{cat.max}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="mb-6">
@@ -254,7 +397,7 @@ export default function ReviewWizard() {
       </div>
 
       {/* Quick action */}
-      {currentStep === 0 && (
+      {currentStep === 0 && suggestions.filter(s => s.autoApply).length > 0 && (
         <div className="card !p-4 mb-6 bg-primary-50 border-primary-200">
           <div className="flex items-center justify-between">
             <div>
@@ -288,17 +431,41 @@ export default function ReviewWizard() {
         <div className="card animate-slide-in">
           {/* Issue header */}
           <div className="flex items-start gap-3 mb-4">
-            {getIssueIcon(currentItem.type || 'warning')}
-            <div>
-              <h2 className="font-semibold text-gray-900">
-                Point d'attention #{currentStep + 1}
-              </h2>
+            <div className="p-2 bg-gray-100 rounded-lg">
+              {getCategoryIcon(currentItem.type)}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold text-gray-900">
+                  Point #{currentStep + 1}
+                </h2>
+                <span className={clsx(
+                  'px-2 py-0.5 text-xs font-medium rounded-full',
+                  currentItem.type === 'error' ? 'bg-red-100 text-red-700' :
+                  currentItem.type === 'warning' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-blue-100 text-blue-700'
+                )}>
+                  {currentItem.type || 'suggestion'}
+                </span>
+              </div>
               <p className="text-sm text-gray-500">{currentItem.type}</p>
             </div>
+            {getCurrentDecision() && (
+              <div className={clsx(
+                'px-3 py-1 rounded-full text-sm font-medium',
+                getCurrentDecision()?.action === 'accept' ? 'bg-green-100 text-green-700' :
+                getCurrentDecision()?.action === 'modify' ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-700'
+              )}>
+                {getCurrentDecision()?.action === 'accept' && 'Accepté'}
+                {getCurrentDecision()?.action === 'modify' && 'Modifié'}
+                {getCurrentDecision()?.action === 'ignore' && 'Ignoré'}
+              </div>
+            )}
           </div>
 
           {/* Description */}
-          <div className="mb-6">
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
             <p className="text-gray-700">{currentItem.reason}</p>
           </div>
 
@@ -306,12 +473,18 @@ export default function ReviewWizard() {
           {currentItem.original && currentItem.suggested && (
             <div className="grid md:grid-cols-2 gap-4 mb-6">
               <div className="p-4 bg-red-50 rounded-lg border border-red-100">
-                <p className="text-xs font-medium text-red-600 mb-2">AVANT</p>
-                <p className="text-gray-800">{currentItem.original}</p>
+                <p className="text-xs font-medium text-red-600 mb-2 flex items-center gap-1">
+                  <ExclamationTriangleIcon className="w-4 h-4" />
+                  AVANT
+                </p>
+                <p className="text-gray-800 text-sm">{currentItem.original}</p>
               </div>
               <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-                <p className="text-xs font-medium text-green-600 mb-2">APRÈS (suggestion)</p>
-                <p className="text-gray-800">{currentItem.suggested}</p>
+                <p className="text-xs font-medium text-green-600 mb-2 flex items-center gap-1">
+                  <CheckCircleIcon className="w-4 h-4" />
+                  SUGGESTION
+                </p>
+                <p className="text-gray-800 text-sm">{currentItem.suggested}</p>
               </div>
             </div>
           )}
@@ -326,6 +499,7 @@ export default function ReviewWizard() {
                 value={editingValue}
                 onChange={(e) => setEditingValue(e.target.value)}
                 placeholder="Saisis ta propre formulation..."
+                autoFocus
               />
             </div>
           )}
@@ -379,19 +553,6 @@ export default function ReviewWizard() {
               </>
             )}
           </div>
-
-          {/* Current decision indicator */}
-          {getCurrentDecision() && (
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-600">
-                Décision : <span className="font-medium">
-                  {getCurrentDecision()?.action === 'accept' && '✅ Accepté'}
-                  {getCurrentDecision()?.action === 'modify' && '✏️ Modifié'}
-                  {getCurrentDecision()?.action === 'ignore' && '⏭️ Ignoré'}
-                </span>
-              </p>
-            </div>
-          )}
         </div>
       )}
 
@@ -415,7 +576,10 @@ export default function ReviewWizard() {
             {applyDecisions.isPending ? (
               <ArrowPathIcon className="w-5 h-5 animate-spin" />
             ) : (
-              'Terminer la revue →'
+              <>
+                Terminer la revue
+                <ChevronRightIcon className="w-5 h-5 ml-1" />
+              </>
             )}
           </button>
         ) : (
@@ -449,14 +613,33 @@ export default function ReviewWizard() {
                     : 'bg-gray-300'
                   : 'bg-gray-300 hover:bg-gray-400'
               )}
+              title={`Point ${index + 1}${decision ? ` - ${decision.action}` : ''}`}
             />
           )
         })}
       </div>
 
+      {/* Summary of decisions */}
+      {decisions.length > 0 && (
+        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Résumé des décisions</h3>
+          <div className="flex gap-4 text-sm">
+            <span className="text-green-600">
+              {decisions.filter(d => d.action === 'accept').length} accepté(s)
+            </span>
+            <span className="text-blue-600">
+              {decisions.filter(d => d.action === 'modify').length} modifié(s)
+            </span>
+            <span className="text-gray-500">
+              {decisions.filter(d => d.action === 'ignore').length} ignoré(s)
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Reassurance */}
       <p className="text-center text-sm text-gray-500 mt-6">
-        💡 Les corrections proposées sont toujours optionnelles — c'est toi qui décides.
+        Les corrections proposées sont toujours optionnelles — c'est toi qui décides.
       </p>
     </div>
   )

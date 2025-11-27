@@ -172,6 +172,11 @@ export const dashboardApi = {
 export const validationApi = {
   get: (sheetId: string) => api.get(`/validation/${sheetId}`),
 
+  quick: (sheetId: string) => api.get(`/validation/${sheetId}/quick`),
+
+  calculateScore: (sheetId: string, decisions: Array<{ suggestionId: string; action: 'accept' | 'modify' | 'ignore'; customValue?: string }>) =>
+    api.post(`/validation/${sheetId}/calculate-score`, { decisions }),
+
   apply: (sheetId: string, data: { suggestionId: string; action: 'accept' | 'modify' | 'ignore'; customValue?: string }) =>
     api.post(`/validation/${sheetId}/apply`, data),
 
