@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { sheetsApi, exportApi, quizApi, generationApi, feedbackApi } from '../lib/api'
 import FeedbackSummary from '../components/FeedbackSummary'
+import SaveAsTemplateModal from '../components/SaveAsTemplateModal'
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -15,7 +16,8 @@ import {
   PlusIcon,
   SparklesIcon,
   XMarkIcon,
-  ChatBubbleLeftRightIcon
+  ChatBubbleLeftRightIcon,
+  DocumentDuplicateIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -37,6 +39,7 @@ export default function EditSheet() {
   const [editValue, setEditValue] = useState('')
   const [regenerateModal, setRegenerateModal] = useState<{ section: string; isOpen: boolean }>({ section: '', isOpen: false })
   const [regenerateInstructions, setRegenerateInstructions] = useState('')
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
 
   // Fetch sheet
   const { data: sheetData, isLoading } = useQuery({
@@ -874,6 +877,14 @@ export default function EditSheet() {
             {sheet.quiz ? 'Quiz généré ✓' : generateQuiz.isPending ? 'Génération...' : 'Générer le quiz'}
           </button>
 
+          <button
+            onClick={() => setShowTemplateModal(true)}
+            className="btn-secondary"
+          >
+            <DocumentDuplicateIcon className="w-5 h-5 mr-2" />
+            Sauver comme modèle
+          </button>
+
           {sheet.status === 'DRAFT' && (
             <button
               onClick={() => submitValidation.mutate()}
@@ -946,6 +957,14 @@ export default function EditSheet() {
           </div>
         </div>
       )}
+
+      {/* Save as Template Modal */}
+      <SaveAsTemplateModal
+        sheetId={id!}
+        sheetTitle={sheet.title}
+        isOpen={showTemplateModal}
+        onClose={() => setShowTemplateModal(false)}
+      />
     </div>
   )
 }

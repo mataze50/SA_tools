@@ -211,4 +211,26 @@ export const feedbackApi = {
   delete: (feedbackId: string) => api.delete(`/feedback/${feedbackId}`)
 }
 
+// Templates
+export const templatesApi = {
+  list: (params?: { type?: string; isPublic?: boolean }) =>
+    api.get('/templates', { params }),
+
+  my: () => api.get('/templates/my'),
+
+  get: (id: string) => api.get(`/templates/${id}`),
+
+  create: (data: any) => api.post('/templates', data),
+
+  createFromSheet: (sheetId: string, data: any) =>
+    api.post(`/templates/from-sheet/${sheetId}`, data),
+
+  use: (templateId: string, data: any) =>
+    api.post(`/templates/${templateId}/use`, data),
+
+  update: (id: string, data: any) => api.patch(`/templates/${id}`, data),
+
+  delete: (id: string) => api.delete(`/templates/${id}`)
+}
+
 export default api

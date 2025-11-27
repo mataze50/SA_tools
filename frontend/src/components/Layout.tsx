@@ -6,14 +6,16 @@ import {
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
   UserCircleIcon,
-  ClipboardDocumentCheckIcon
+  ClipboardDocumentCheckIcon,
+  DocumentDuplicateIcon
 } from '@heroicons/react/24/outline'
 import NotificationsDropdown from './NotificationsDropdown'
 import clsx from 'clsx'
 
 const navigation = [
   { name: 'Accueil', href: '/', icon: HomeIcon },
-  { name: 'Mes fiches', href: '/dashboard', icon: DocumentTextIcon }
+  { name: 'Mes fiches', href: '/dashboard', icon: DocumentTextIcon },
+  { name: 'Templates', href: '/templates', icon: DocumentDuplicateIcon }
 ]
 
 const managerNav = [
