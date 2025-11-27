@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { sheetsApi, exportApi, quizApi, generationApi, feedbackApi } from '../lib/api'
 import FeedbackSummary from '../components/FeedbackSummary'
 import SaveAsTemplateModal from '../components/SaveAsTemplateModal'
+import ExportOptionsModal from '../components/ExportOptionsModal'
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -17,7 +18,8 @@ import {
   SparklesIcon,
   XMarkIcon,
   ChatBubbleLeftRightIcon,
-  DocumentDuplicateIcon
+  DocumentDuplicateIcon,
+  ShareIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -40,6 +42,7 @@ export default function EditSheet() {
   const [regenerateModal, setRegenerateModal] = useState<{ section: string; isOpen: boolean }>({ section: '', isOpen: false })
   const [regenerateInstructions, setRegenerateInstructions] = useState('')
   const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
 
   // Fetch sheet
   const { data: sheetData, isLoading } = useQuery({
@@ -861,12 +864,11 @@ export default function EditSheet() {
       <div className="card">
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={() => exportDocx.mutate()}
-            disabled={exportDocx.isPending}
+            onClick={() => setShowExportModal(true)}
             className="btn-secondary"
           >
-            <DocumentArrowDownIcon className="w-5 h-5 mr-2" />
-            {exportDocx.isPending ? 'Export...' : 'Exporter DOCX'}
+            <ShareIcon className="w-5 h-5 mr-2" />
+            Exporter & Partager
           </button>
 
           <button
@@ -874,7 +876,7 @@ export default function EditSheet() {
             disabled={generateQuiz.isPending || !!sheet.quiz}
             className="btn-secondary"
           >
-            {sheet.quiz ? 'Quiz généré ✓' : generateQuiz.isPending ? 'Génération...' : 'Générer le quiz'}
+            {sheet.quiz ? 'Quiz genere' : generateQuiz.isPending ? 'Generation...' : 'Generer le quiz'}
           </button>
 
           <button
@@ -882,7 +884,7 @@ export default function EditSheet() {
             className="btn-secondary"
           >
             <DocumentDuplicateIcon className="w-5 h-5 mr-2" />
-            Sauver comme modèle
+            Sauver comme modele
           </button>
 
           {sheet.status === 'DRAFT' && (
@@ -891,7 +893,7 @@ export default function EditSheet() {
               disabled={submitValidation.isPending}
               className="btn-primary ml-auto"
             >
-              {submitValidation.isPending ? 'Envoi...' : 'Envoyer pour validation →'}
+              {submitValidation.isPending ? 'Envoi...' : 'Envoyer pour validation'}
             </button>
           )}
         </div>
@@ -964,6 +966,15 @@ export default function EditSheet() {
         sheetTitle={sheet.title}
         isOpen={showTemplateModal}
         onClose={() => setShowTemplateModal(false)}
+      />
+
+      {/* Export Options Modal */}
+      <ExportOptionsModal
+        sheetId={id!}
+        sheetTitle={sheet.title}
+        hasQuiz={!!sheet.quiz}
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
       />
     </div>
   )

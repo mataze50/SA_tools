@@ -1,4 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import {
   Document,
   Paragraph,
@@ -114,9 +115,358 @@ exportRouter.get('/quiz/:sheetId', authenticate, async (req: AuthRequest, res: R
   }
 });
 
+// GET /api/export/html/:sheetId - Export sheet as printable HTML (for PDF)
+exportRouter.get('/html/:sheetId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const sheet = await prisma.sheet.findFirst({
+      where: {
+        id: req.params.sheetId,
+        userId: req.user!.id
+      },
+      include: {
+        competency: true,
+        user: { select: { firstName: true, lastName: true } }
+      }
+    });
+
+    if (!sheet) {
+      throw new AppError('Sheet not found', 404);
+    }
+
+    const html = generatePrintableHtml(sheet);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/export/share/:sheetId - Generate public share link
+exportRouter.post('/share/:sheetId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const sheet = await prisma.sheet.findFirst({
+      where: {
+        id: req.params.sheetId,
+        userId: req.user!.id
+      }
+    });
+
+    if (!sheet) {
+      throw new AppError('Sheet not found', 404);
+    }
+
+    // Generate unique share token
+    const shareToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+    // Update sheet with share token
+    await prisma.sheet.update({
+      where: { id: sheet.id },
+      data: {
+        shareToken,
+        shareExpiresAt: expiresAt
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        shareToken,
+        shareUrl: `/api/export/public/${shareToken}`,
+        expiresAt
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/export/share/:sheetId - Revoke public share link
+exportRouter.delete('/share/:sheetId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const sheet = await prisma.sheet.findFirst({
+      where: {
+        id: req.params.sheetId,
+        userId: req.user!.id
+      }
+    });
+
+    if (!sheet) {
+      throw new AppError('Sheet not found', 404);
+    }
+
+    await prisma.sheet.update({
+      where: { id: sheet.id },
+      data: {
+        shareToken: null,
+        shareExpiresAt: null
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Share link revoked'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/public/:token - View shared sheet (no auth required)
+exportRouter.get('/public/:token', async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const { format } = req.query;
+
+    const sheet = await prisma.sheet.findFirst({
+      where: {
+        shareToken: token,
+        shareExpiresAt: { gt: new Date() }
+      },
+      include: {
+        competency: true,
+        user: { select: { firstName: true, lastName: true } },
+        quiz: true
+      }
+    });
+
+    if (!sheet) {
+      throw new AppError('Share link expired or invalid', 404);
+    }
+
+    // Return based on format
+    if (format === 'html') {
+      const html = generatePrintableHtml(sheet);
+      res.setHeader('Content-Type', 'text/html');
+      return res.send(html);
+    }
+
+    if (format === 'json') {
+      // Return sanitized JSON (without sensitive data)
+      return res.json({
+        success: true,
+        data: {
+          title: sheet.title,
+          competency: sheet.competency,
+          sector: sheet.sector,
+          audienceType: sheet.audienceType,
+          format: sheet.format,
+          duration: sheet.duration,
+          objectives: sheet.objectives,
+          situations: sheet.situations,
+          flow: sheet.flow,
+          evaluation: sheet.evaluation,
+          author: `${sheet.user.firstName} ${sheet.user.lastName}`,
+          updatedAt: sheet.updatedAt
+        }
+      });
+    }
+
+    // Default: return view page
+    const viewHtml = generatePublicViewHtml(sheet);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(viewHtml);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/share-status/:sheetId - Get share status
+exportRouter.get('/share-status/:sheetId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const sheet = await prisma.sheet.findFirst({
+      where: {
+        id: req.params.sheetId,
+        userId: req.user!.id
+      },
+      select: {
+        shareToken: true,
+        shareExpiresAt: true
+      }
+    });
+
+    if (!sheet) {
+      throw new AppError('Sheet not found', 404);
+    }
+
+    const isShared = sheet.shareToken && sheet.shareExpiresAt && sheet.shareExpiresAt > new Date();
+
+    res.json({
+      success: true,
+      data: {
+        isShared,
+        shareToken: isShared ? sheet.shareToken : null,
+        expiresAt: isShared ? sheet.shareExpiresAt : null
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ============================================
 // DOCUMENT GENERATORS
 // ============================================
+
+function generatePrintableHtml(sheet: any): string {
+  const objectives = sheet.objectives as any[];
+  const situations = sheet.situations as any[];
+  const flow = sheet.flow as any[];
+  const evaluation = sheet.evaluation as any;
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${sheet.title} - Fiche pedagogique</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+      .page-break { page-break-before: always; }
+    }
+    h1 { font-size: 24px; color: #1a365d; margin-bottom: 10px; text-align: center; }
+    h2 { font-size: 18px; color: #2d3748; margin: 30px 0 15px; padding-bottom: 5px; border-bottom: 2px solid #3182ce; }
+    h3 { font-size: 16px; color: #4a5568; margin: 20px 0 10px; }
+    p { margin: 8px 0; }
+    .header { text-align: center; margin-bottom: 30px; }
+    .subtitle { color: #718096; font-size: 14px; }
+    .meta { background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    .meta-item { display: inline-block; margin-right: 20px; }
+    .meta-label { font-weight: 600; color: #4a5568; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-right: 5px;
+    }
+    .badge-blue { background: #bee3f8; color: #2b6cb0; }
+    .badge-green { background: #c6f6d5; color: #276749; }
+    .badge-purple { background: #e9d8fd; color: #553c9a; }
+    .objective { padding: 10px; margin: 10px 0; background: #f0fff4; border-left: 3px solid #48bb78; }
+    .situation { padding: 15px; margin: 15px 0; background: #fffaf0; border-radius: 8px; }
+    .phase { padding: 15px; margin: 15px 0; background: #ebf8ff; border-radius: 8px; }
+    .phase-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .activity { padding-left: 20px; margin: 10px 0; border-left: 2px solid #90cdf4; }
+    .materials { background: #f7fafc; padding: 8px 12px; border-radius: 4px; margin-top: 10px; font-size: 13px; }
+    .footer { margin-top: 40px; text-align: center; color: #a0aec0; font-size: 12px; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+    .print-btn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 10px 20px;
+      background: #3182ce;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .print-btn:hover { background: #2c5282; }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">Imprimer / PDF</button>
+
+  <div class="header">
+    <h1>${sheet.title}</h1>
+    <p class="subtitle">${sheet.competency.code} - ${sheet.competency.title}</p>
+  </div>
+
+  <div class="meta">
+    <div class="meta-item"><span class="meta-label">Secteur:</span> ${sheet.sector}</div>
+    <div class="meta-item"><span class="meta-label">Public:</span> ${sheet.audienceType}</div>
+    <div class="meta-item"><span class="meta-label">Format:</span> ${formatLabel(sheet.format)}</div>
+    <div class="meta-item"><span class="meta-label">Duree:</span> ${sheet.duration} min</div>
+  </div>
+
+  <h2>Objectifs pedagogiques</h2>
+  ${objectives.map((obj, i) => `
+    <div class="objective">
+      <strong>Objectif ${i + 1}</strong> <span class="badge badge-purple">${obj.bloomLevel}</span>
+      <p>${obj.text}</p>
+    </div>
+  `).join('')}
+
+  <h2>Situations professionnelles</h2>
+  ${situations.map((sit, i) => `
+    <div class="situation">
+      <h3>Situation ${i + 1}: ${sit.title}</h3>
+      <p>${sit.description}</p>
+      <p><strong>Defi:</strong> ${sit.challenge}</p>
+      <p><strong>Comportement attendu:</strong> ${sit.expectedBehavior}</p>
+    </div>
+  `).join('')}
+
+  <h2>Deroule pedagogique</h2>
+  ${flow.map(phase => `
+    <div class="phase">
+      <div class="phase-header">
+        <h3>${phase.name}</h3>
+        <span class="badge badge-blue">${phase.duration} min</span>
+      </div>
+      ${phase.activities?.map((act: any) => `
+        <div class="activity">
+          <strong>${act.name}</strong>
+          <span class="badge">${act.duration} min</span>
+          <span class="badge">${activityTypeLabel(act.type)}</span>
+          <p>${act.instructions}</p>
+        </div>
+      `).join('') || ''}
+      ${phase.materials?.length ? `
+        <div class="materials">
+          <strong>Materiel:</strong> ${phase.materials.join(', ')}
+        </div>
+      ` : ''}
+    </div>
+  `).join('')}
+
+  <h2>Evaluation</h2>
+  ${evaluation?.method ? `<p><strong>Methode:</strong> ${evaluation.method}</p>` : ''}
+  ${evaluation?.criteria?.length ? `
+    <h3>Criteres</h3>
+    <ul>
+      ${evaluation.criteria.map((c: any) => `<li><strong>${c.criterion}:</strong> ${c.observable}</li>`).join('')}
+    </ul>
+  ` : ''}
+  ${evaluation?.successIndicators?.length ? `
+    <h3>Indicateurs de reussite</h3>
+    <ul>
+      ${evaluation.successIndicators.map((ind: string) => `<li>${ind}</li>`).join('')}
+    </ul>
+  ` : ''}
+
+  <div class="footer">
+    <p>Genere par ATELIER FORGE - ${new Date().toLocaleDateString('fr-FR')}</p>
+    <p>Auteur: ${sheet.user.firstName} ${sheet.user.lastName}</p>
+  </div>
+</body>
+</html>`;
+}
+
+function generatePublicViewHtml(sheet: any): string {
+  const html = generatePrintableHtml(sheet);
+  // Add a notice for public view
+  return html.replace(
+    '<div class="header">',
+    `<div style="background: #fef3cd; color: #856404; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
+      Cette fiche est partagee en lecture seule. <a href="?format=html" style="color: #856404;">Version imprimable</a>
+    </div>
+    <div class="header">`
+  );
+}
 
 function createDocxDocument(sheet: any): Document {
   const objectives = sheet.objectives as any[];

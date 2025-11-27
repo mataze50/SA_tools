@@ -120,7 +120,15 @@ export const exportApi = {
   json: (sheetId: string) => api.get(`/export/json/${sheetId}`),
 
   quiz: (sheetId: string) =>
-    api.get(`/export/quiz/${sheetId}`, { responseType: 'blob' })
+    api.get(`/export/quiz/${sheetId}`, { responseType: 'blob' }),
+
+  html: (sheetId: string) => api.get(`/export/html/${sheetId}`),
+
+  createShare: (sheetId: string) => api.post(`/export/share/${sheetId}`),
+
+  revokeShare: (sheetId: string) => api.delete(`/export/share/${sheetId}`),
+
+  shareStatus: (sheetId: string) => api.get(`/export/share-status/${sheetId}`)
 }
 
 // Dashboard
