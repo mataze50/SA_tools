@@ -1,0 +1,292 @@
+// Atelier Forge Database Schema
+// Version 3.0 - November 2025
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          UserRole  @default(CONSULTANT)
+  experienceLevel ExperienceLevel @default(CONFIRMED)
+  sector        String?   // Default sector for context
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+
+  // Relations
+  sheets        Sheet[]
+  feedbacks     SheetFeedback[]
+  validations   SheetValidation[]  @relation("ValidatedBy")
+  templates     Template[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  CONSULTANT
+  MANAGER
+  ADMIN
+}
+
+enum ExperienceLevel {
+  BEGINNER    // < 2 years
+  CONFIRMED   // 2-5 years
+  EXPERT      // > 5 years
+}
+
+// ============================================
+// COMPETENCY REFERENTIAL
+// ============================================
+
+model Competency {
+  id          String   @id @default(uuid())
+  code        String   @unique  // e.g., "C5.4"
+  axis        String   // e.g., "C5"
+  axisName    String   // e.g., "Relationnel"
+  title       String   // Full competency title
+  description String?  // Detailed description
+  keywords    String[] // Search keywords
+  order       Int      // Display order
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  sheets      Sheet[]
+
+  @@map("competencies")
+}
+
+// ============================================
+// SHEET (FICHE DE CONCEPTION)
+// ============================================
+
+model Sheet {
+  id              String      @id @default(uuid())
+  title           String
+  status          SheetStatus @default(DRAFT)
+  confidenceScore Int         @default(0)  // 0-100
+  version         Int         @default(1)
+
+  // Context
+  sector          String
+  audienceType    String
+  format          SheetFormat @default(IN_PERSON)
+  constraints     String[]    // Array of constraint codes
+  priorities      String[]    // Array of priority codes
+  duration        Int         @default(75) // Duration in minutes
+
+  // Content (stored as JSON)
+  objectives      Json        // Array of objectives
+  situations      Json        // Array of professional situations
+  flow            Json        // Array of flow phases
+  evaluation      Json        // Evaluation criteria
+  resources       Json?       // Additional resources
+
+  // AI Metadata
+  aiGenerationId  String?     // Track generation session
+  aiModel         String?     // Model used for generation
+  perplexityCalls Int         @default(0)
+  claudeCalls     Int         @default(0)
+  totalCost       Float       @default(0)
+
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  validatedAt     DateTime?
+  archivedAt      DateTime?
+
+  // Relations
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  competencyId    String
+  competency      Competency  @relation(fields: [competencyId], references: [id])
+  validations     SheetValidation[]
+  feedbacks       SheetFeedback[]
+  versions        SheetVersion[]
+  quiz            Quiz?
+
+  @@index([userId])
+  @@index([competencyId])
+  @@index([status])
+  @@map("sheets")
+}
+
+enum SheetStatus {
+  DRAFT
+  PENDING_VALIDATION
+  VALIDATED
+  ARCHIVED
+}
+
+enum SheetFormat {
+  IN_PERSON       // Présentiel
+  REMOTE_SYNC     // Distanciel synchrone
+  REMOTE_ASYNC    // Distanciel asynchrone
+  HYBRID          // Hybride
+}
+
+// ============================================
+// SHEET VERSION HISTORY
+// ============================================
+
+model SheetVersion {
+  id          String   @id @default(uuid())
+  versionNum  Int
+  content     Json     // Full sheet content snapshot
+  changeNote  String?  // Description of changes
+  createdAt   DateTime @default(now())
+
+  // Relations
+  sheetId     String
+  sheet       Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+
+  @@unique([sheetId, versionNum])
+  @@map("sheet_versions")
+}
+
+// ============================================
+// VALIDATION WORKFLOW
+// ============================================
+
+model SheetValidation {
+  id          String           @id @default(uuid())
+  status      ValidationStatus
+  comments    String?
+  createdAt   DateTime         @default(now())
+
+  // Relations
+  sheetId     String
+  sheet       Sheet            @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  validatorId String
+  validator   User             @relation("ValidatedBy", fields: [validatorId], references: [id])
+
+  @@map("sheet_validations")
+}
+
+enum ValidationStatus {
+  APPROVED
+  REJECTED
+  NEEDS_CHANGES
+}
+
+// ============================================
+// POST-WORKSHOP FEEDBACK
+// ============================================
+
+model SheetFeedback {
+  id              String   @id @default(uuid())
+  workshopDate    DateTime
+  participantCount Int
+  overallRating   Int      // 1-5
+  situationRatings Json    // { "S1": "top", "S2": "bof", ... }
+  timingFeedback  String   // "short", "perfect", "long"
+  timingNote      String?
+  comments        String?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  sheetId         String
+  sheet           Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@map("sheet_feedbacks")
+}
+
+// ============================================
+// QUIZ
+// ============================================
+
+model Quiz {
+  id          String   @id @default(uuid())
+  questions   Json     // Array of quiz questions
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  sheetId     String   @unique
+  sheet       Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+
+  @@map("quizzes")
+}
+
+// ============================================
+// TEMPLATES
+// ============================================
+
+model Template {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  type        TemplateType
+  content     Json         // Template configuration
+  isPublic    Boolean      @default(false)
+  usageCount  Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+
+  @@map("templates")
+}
+
+enum TemplateType {
+  DISCOVERY       // Découverte
+  IMPROVEMENT     // Perfectionnement
+  REMEDIATION     // Remédiation
+  CUSTOM          // Personnalisé
+}
+
+// ============================================
+// AI GENERATION SESSIONS
+// ============================================
+
+model GenerationSession {
+  id              String   @id @default(uuid())
+  status          GenerationStatus
+  inputContext    Json     // Original user input
+  enrichmentData  Json?    // Perplexity results
+  generatedContent Json?   // Initial generation
+  validationResult Json?   // Validation analysis
+  finalContent    Json?    // After improvements
+
+  // Metrics
+  totalDuration   Int?     // Total time in ms
+  perplexityCalls Int      @default(0)
+  claudeCalls     Int      @default(0)
+  totalTokensIn   Int      @default(0)
+  totalTokensOut  Int      @default(0)
+  estimatedCost   Float    @default(0)
+
+  // Timestamps
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  @@map("generation_sessions")
+}
+
+enum GenerationStatus {
+  PENDING
+  ENRICHING
+  GENERATING
+  VALIDATING
+  IMPROVING
+  COMPLETED
+  FAILED
+}
