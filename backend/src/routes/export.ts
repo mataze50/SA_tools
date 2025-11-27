@@ -1380,3 +1380,932 @@ function addSectionHeader(doc: PDFKit.PDFDocument, title: string, color: string)
   doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke(color);
   doc.moveDown(0.5);
 }
+
+// ============================================
+// WORKSHOP MODE A EXPORTS (Sprint 16 - Playbook)
+// ============================================
+
+// GET /api/export/workshop-docx/:workshopId - Export workshop as complete DOCX
+exportRouter.get('/workshop-docx/:workshopId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const workshop = await prisma.workshop.findFirst({
+      where: {
+        id: req.params.workshopId,
+        userId: req.user!.id
+      },
+      include: {
+        competencies: {
+          include: { competency: true }
+        },
+        user: {
+          select: { firstName: true, lastName: true }
+        }
+      }
+    });
+
+    if (!workshop) {
+      throw new AppError('Workshop not found', 404);
+    }
+
+    const doc = createWorkshopDocx(workshop);
+    const buffer = await Packer.toBuffer(doc);
+
+    const primaryComp = workshop.competencies.find((wc: any) => wc.isPrimary)?.competency;
+    const filename = `atelier_${primaryComp?.code || 'workshop'}_${Date.now()}.docx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/workshop-script/:workshopId - Export trainer animation script as PDF
+exportRouter.get('/workshop-script/:workshopId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const workshop = await prisma.workshop.findFirst({
+      where: {
+        id: req.params.workshopId,
+        userId: req.user!.id
+      },
+      include: {
+        competencies: {
+          include: { competency: true }
+        },
+        user: {
+          select: { firstName: true, lastName: true }
+        }
+      }
+    });
+
+    if (!workshop) {
+      throw new AppError('Workshop not found', 404);
+    }
+
+    const pdfBuffer = await generateTrainerScriptPdf(workshop);
+    const primaryComp = workshop.competencies.find((wc: any) => wc.isPrimary)?.competency;
+    const filename = `script_animation_${primaryComp?.code || 'workshop'}_${Date.now()}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/workshop-html/:workshopId - Export workshop as printable HTML
+exportRouter.get('/workshop-html/:workshopId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const workshop = await prisma.workshop.findFirst({
+      where: {
+        id: req.params.workshopId,
+        userId: req.user!.id
+      },
+      include: {
+        competencies: {
+          include: { competency: true }
+        },
+        user: {
+          select: { firstName: true, lastName: true }
+        }
+      }
+    });
+
+    if (!workshop) {
+      throw new AppError('Workshop not found', 404);
+    }
+
+    const html = generateWorkshopPrintableHtml(workshop);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// WORKSHOP DOCUMENT GENERATORS
+// ============================================
+
+function createWorkshopDocx(workshop: any): Document {
+  const introduction = workshop.introduction as any || {};
+  const timeline = workshop.timeline as any[] || [];
+  const activities = workshop.activities as any[] || [];
+  const materials = workshop.materials as any[] || [];
+  const trainerNotes = workshop.trainerNotes as any || {};
+  const evaluation = workshop.evaluation as any || {};
+  const synthesis = workshop.synthesis as any || {};
+
+  const primaryComp = workshop.competencies.find((wc: any) => wc.isPrimary)?.competency;
+  const secondaryComps = workshop.competencies.filter((wc: any) => !wc.isPrimary);
+
+  const sections: Paragraph[] = [];
+
+  // Title page
+  sections.push(
+    new Paragraph({
+      text: 'ATELIER DE FORMATION',
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.CENTER
+    }),
+    new Paragraph({
+      text: workshop.title,
+      heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER
+    }),
+    new Paragraph({ text: '' }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: workshop.description || '', italics: true })
+      ],
+      alignment: AlignmentType.CENTER
+    }),
+    new Paragraph({ text: '' }),
+    new Paragraph({ text: '' })
+  );
+
+  // Metadata
+  sections.push(
+    new Paragraph({
+      text: 'INFORMATIONS GENERALES',
+      heading: HeadingLevel.HEADING_2
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Competence principale : ', bold: true }),
+        new TextRun(`${primaryComp?.code || ''} - ${primaryComp?.title || ''}`)
+      ]
+    })
+  );
+
+  if (secondaryComps.length > 0) {
+    sections.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: 'Competences secondaires : ', bold: true }),
+          new TextRun(secondaryComps.map((wc: any) => `${wc.competency.code}`).join(', '))
+        ]
+      })
+    );
+  }
+
+  sections.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Secteur : ', bold: true }),
+        new TextRun(workshop.sector)
+      ]
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Public cible : ', bold: true }),
+        new TextRun(workshop.audienceType)
+      ]
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Format : ', bold: true }),
+        new TextRun(formatLabel(workshop.format))
+      ]
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Duree : ', bold: true }),
+        new TextRun(`${workshop.duration} minutes`)
+      ]
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Participants : ', bold: true }),
+        new TextRun(`${workshop.participantMin} a ${workshop.participantMax}`)
+      ]
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Score de confiance : ', bold: true }),
+        new TextRun(`${workshop.confidenceScore}%`)
+      ]
+    }),
+    new Paragraph({ text: '' })
+  );
+
+  // Introduction section
+  if (introduction.welcomeScript || introduction.objectivesPresentation) {
+    sections.push(
+      new Paragraph({
+        text: 'INTRODUCTION',
+        heading: HeadingLevel.HEADING_2
+      })
+    );
+
+    if (introduction.welcomeScript) {
+      sections.push(
+        new Paragraph({
+          text: 'Script d\'accueil :',
+          heading: HeadingLevel.HEADING_3
+        }),
+        new Paragraph({ text: introduction.welcomeScript })
+      );
+    }
+
+    if (introduction.iceBreaker) {
+      sections.push(
+        new Paragraph({
+          text: `Ice-breaker : ${introduction.iceBreaker.name} (${introduction.iceBreaker.duration} min)`,
+          heading: HeadingLevel.HEADING_3
+        }),
+        new Paragraph({ text: introduction.iceBreaker.instructions })
+      );
+    }
+
+    if (introduction.objectivesPresentation) {
+      sections.push(
+        new Paragraph({
+          text: 'Presentation des objectifs :',
+          heading: HeadingLevel.HEADING_3
+        }),
+        new Paragraph({ text: introduction.objectivesPresentation })
+      );
+    }
+    sections.push(new Paragraph({ text: '' }));
+  }
+
+  // Timeline section
+  if (timeline.length > 0) {
+    sections.push(
+      new Paragraph({
+        text: 'DEROULEMENT DE L\'ATELIER',
+        heading: HeadingLevel.HEADING_2
+      })
+    );
+
+    timeline.forEach((phase: any) => {
+      sections.push(
+        new Paragraph({
+          text: `${phase.name} (${phase.duration} min)`,
+          heading: HeadingLevel.HEADING_3
+        })
+      );
+
+      if (phase.objectives?.length) {
+        sections.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: 'Objectifs : ', bold: true }),
+              new TextRun(phase.objectives.join(' | '))
+            ]
+          })
+        );
+      }
+
+      if (phase.activityIds?.length) {
+        const phaseActivities = activities.filter((a: any) => phase.activityIds.includes(a.id));
+        phaseActivities.forEach((act: any) => {
+          sections.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: `  • ${act.name} `, bold: true }),
+                new TextRun(`(${act.duration} min - ${activityTypeLabel(act.type)})`)
+              ]
+            })
+          );
+          if (act.instructions?.participants) {
+            sections.push(
+              new Paragraph({
+                children: [new TextRun({ text: `    Consignes : ${act.instructions.participants}`, italics: true })]
+              })
+            );
+          }
+        });
+      }
+      sections.push(new Paragraph({ text: '' }));
+    });
+  }
+
+  // Activities detail
+  if (activities.length > 0) {
+    sections.push(
+      new Paragraph({
+        text: 'DETAIL DES ACTIVITES',
+        heading: HeadingLevel.HEADING_2,
+        pageBreakBefore: true
+      })
+    );
+
+    activities.forEach((act: any, i: number) => {
+      sections.push(
+        new Paragraph({
+          text: `Activite ${i + 1} : ${act.name}`,
+          heading: HeadingLevel.HEADING_3
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({ text: 'Type : ', bold: true }),
+            new TextRun(activityTypeLabel(act.type)),
+            new TextRun({ text: ' | Duree : ', bold: true }),
+            new TextRun(`${act.duration} min`),
+            new TextRun({ text: ' | Bloom : ', bold: true }),
+            new TextRun(`Niveau ${act.bloomLevel}`)
+          ]
+        })
+      );
+
+      if (act.objectives?.length) {
+        sections.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: 'Objectifs : ', bold: true }),
+              new TextRun(act.objectives.join(', '))
+            ]
+          })
+        );
+      }
+
+      if (act.instructions?.trainer) {
+        sections.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: 'Instructions formateur : ', bold: true })
+            ]
+          }),
+          new Paragraph({ text: act.instructions.trainer })
+        );
+      }
+
+      if (act.instructions?.participants) {
+        sections.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: 'Consignes participants : ', bold: true })
+            ]
+          }),
+          new Paragraph({ text: act.instructions.participants })
+        );
+      }
+
+      if (act.setup) {
+        sections.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: 'Preparation : ', bold: true }),
+              new TextRun(act.setup)
+            ]
+          })
+        );
+      }
+
+      if (act.debrief) {
+        sections.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: 'Debrief : ', bold: true }),
+              new TextRun(act.debrief)
+            ]
+          })
+        );
+      }
+
+      if (act.materials?.length) {
+        sections.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: 'Materiel : ', bold: true }),
+              new TextRun(act.materials.join(', '))
+            ]
+          })
+        );
+      }
+
+      sections.push(new Paragraph({ text: '' }));
+    });
+  }
+
+  // Materials section
+  if (materials.length > 0) {
+    sections.push(
+      new Paragraph({
+        text: 'LISTE DU MATERIEL',
+        heading: HeadingLevel.HEADING_2
+      })
+    );
+
+    materials.forEach((mat: any) => {
+      sections.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: `• ${mat.name} `, bold: true }),
+            new TextRun(`(${mat.quantity}) - ${mat.type}`),
+            mat.notes ? new TextRun({ text: ` - ${mat.notes}`, italics: true }) : new TextRun('')
+          ]
+        })
+      );
+    });
+    sections.push(new Paragraph({ text: '' }));
+  }
+
+  // Trainer notes
+  if (trainerNotes.preparation?.length || trainerNotes.keyMessages?.length) {
+    sections.push(
+      new Paragraph({
+        text: 'NOTES FORMATEUR',
+        heading: HeadingLevel.HEADING_2,
+        pageBreakBefore: true
+      })
+    );
+
+    if (trainerNotes.preparation?.length) {
+      sections.push(
+        new Paragraph({ text: 'Preparation avant l\'atelier :', heading: HeadingLevel.HEADING_3 })
+      );
+      trainerNotes.preparation.forEach((p: string) => {
+        sections.push(new Paragraph({ children: [new TextRun(`• ${p}`)] }));
+      });
+    }
+
+    if (trainerNotes.keyMessages?.length) {
+      sections.push(
+        new Paragraph({ text: 'Messages cles a faire passer :', heading: HeadingLevel.HEADING_3 })
+      );
+      trainerNotes.keyMessages.forEach((m: string) => {
+        sections.push(new Paragraph({ children: [new TextRun(`• ${m}`)] }));
+      });
+    }
+
+    if (trainerNotes.commonPitfalls?.length) {
+      sections.push(
+        new Paragraph({ text: 'Pieges a eviter :', heading: HeadingLevel.HEADING_3 })
+      );
+      trainerNotes.commonPitfalls.forEach((p: string) => {
+        sections.push(new Paragraph({ children: [new TextRun(`• ${p}`)] }));
+      });
+    }
+
+    if (trainerNotes.adaptationTips) {
+      sections.push(
+        new Paragraph({ text: 'Conseils d\'adaptation :', heading: HeadingLevel.HEADING_3 })
+      );
+      if (trainerNotes.adaptationTips.timing) {
+        sections.push(new Paragraph({
+          children: [
+            new TextRun({ text: 'Timing : ', bold: true }),
+            new TextRun(trainerNotes.adaptationTips.timing)
+          ]
+        }));
+      }
+      if (trainerNotes.adaptationTips.engagement) {
+        sections.push(new Paragraph({
+          children: [
+            new TextRun({ text: 'Engagement : ', bold: true }),
+            new TextRun(trainerNotes.adaptationTips.engagement)
+          ]
+        }));
+      }
+      if (trainerNotes.adaptationTips.difficulties) {
+        sections.push(new Paragraph({
+          children: [
+            new TextRun({ text: 'Difficultes : ', bold: true }),
+            new TextRun(trainerNotes.adaptationTips.difficulties)
+          ]
+        }));
+      }
+    }
+    sections.push(new Paragraph({ text: '' }));
+  }
+
+  // Evaluation section
+  if (evaluation.strategy || evaluation.criteria?.length) {
+    sections.push(
+      new Paragraph({
+        text: 'EVALUATION',
+        heading: HeadingLevel.HEADING_2
+      })
+    );
+
+    if (evaluation.strategy) {
+      sections.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: 'Strategie : ', bold: true }),
+            new TextRun(evaluation.strategy)
+          ]
+        })
+      );
+    }
+
+    if (evaluation.formativeAssessments?.length) {
+      sections.push(
+        new Paragraph({ text: 'Evaluations formatives :', heading: HeadingLevel.HEADING_3 })
+      );
+      evaluation.formativeAssessments.forEach((fa: any) => {
+        sections.push(new Paragraph({
+          children: [new TextRun(`• ${fa.method} - ${fa.criteria}`)]
+        }));
+      });
+    }
+
+    if (evaluation.summativeAssessment?.criteria?.length) {
+      sections.push(
+        new Paragraph({ text: 'Criteres d\'evaluation sommative :', heading: HeadingLevel.HEADING_3 })
+      );
+      evaluation.summativeAssessment.criteria.forEach((c: any) => {
+        sections.push(new Paragraph({
+          children: [
+            new TextRun({ text: `• ${c.competencyCode} : `, bold: true }),
+            new TextRun(`${c.criterion} - ${c.observable}`)
+          ]
+        }));
+      });
+    }
+    sections.push(new Paragraph({ text: '' }));
+  }
+
+  // Synthesis section
+  if (synthesis.keyTakeaways?.length) {
+    sections.push(
+      new Paragraph({
+        text: 'SYNTHESE ET CLOTURE',
+        heading: HeadingLevel.HEADING_2
+      })
+    );
+
+    sections.push(
+      new Paragraph({ text: 'Points cles a retenir :', heading: HeadingLevel.HEADING_3 })
+    );
+    synthesis.keyTakeaways.forEach((kt: string) => {
+      sections.push(new Paragraph({ children: [new TextRun(`• ${kt}`)] }));
+    });
+
+    if (synthesis.nextSteps) {
+      sections.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: 'Prochaines etapes : ', bold: true }),
+            new TextRun(synthesis.nextSteps)
+          ]
+        })
+      );
+    }
+
+    if (synthesis.closingScript) {
+      sections.push(
+        new Paragraph({ text: 'Script de cloture :', heading: HeadingLevel.HEADING_3 }),
+        new Paragraph({ text: synthesis.closingScript })
+      );
+    }
+  }
+
+  // Footer
+  sections.push(
+    new Paragraph({ text: '' }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `Genere par ATELIER FORGE — ${new Date().toLocaleDateString('fr-FR')}`,
+          italics: true,
+          size: 20
+        })
+      ],
+      alignment: AlignmentType.CENTER
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `Auteur : ${workshop.user.firstName} ${workshop.user.lastName}`,
+          italics: true,
+          size: 20
+        })
+      ],
+      alignment: AlignmentType.CENTER
+    })
+  );
+
+  return new Document({
+    sections: [{
+      properties: {},
+      children: sections
+    }]
+  });
+}
+
+async function generateTrainerScriptPdf(workshop: any): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50,
+      info: {
+        Title: `Script Animation - ${workshop.title}`,
+        Author: `${workshop.user.firstName} ${workshop.user.lastName}`,
+        Subject: 'Script d\'animation pour formateur',
+        Creator: 'ATELIER FORGE v3.0'
+      }
+    });
+
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const introduction = workshop.introduction as any || {};
+    const timeline = workshop.timeline as any[] || [];
+    const activities = workshop.activities as any[] || [];
+    const trainerNotes = workshop.trainerNotes as any || {};
+    const synthesis = workshop.synthesis as any || {};
+
+    const primaryComp = workshop.competencies.find((wc: any) => wc.isPrimary)?.competency;
+
+    // Colors
+    const primaryColor = '#1a365d';
+    const accentColor = '#3182ce';
+    const alertColor = '#c53030';
+    const successColor = '#276749';
+
+    // Header
+    doc.fontSize(20).fillColor(primaryColor).text('SCRIPT D\'ANIMATION', { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(16).fillColor(accentColor).text(workshop.title, { align: 'center' });
+    doc.moveDown(0.2);
+    doc.fontSize(10).fillColor('#718096').text(
+      `${primaryComp?.code || ''} | ${workshop.duration} min | ${workshop.participantMin}-${workshop.participantMax} participants`,
+      { align: 'center' }
+    );
+    doc.moveDown(1);
+
+    // Preparation checklist
+    addSectionHeader(doc, 'AVANT L\'ATELIER', alertColor);
+    if (trainerNotes.preparation?.length) {
+      trainerNotes.preparation.forEach((p: string) => {
+        doc.fontSize(10).fillColor('#2d3748').text(`☐ ${p}`, { indent: 10 });
+      });
+    } else {
+      doc.fontSize(10).fillColor('#718096').text('Aucune preparation specifique indiquee', { indent: 10 });
+    }
+    doc.moveDown(0.5);
+
+    // Key messages reminder
+    if (trainerNotes.keyMessages?.length) {
+      addSectionHeader(doc, 'MESSAGES CLES', successColor);
+      trainerNotes.keyMessages.forEach((m: string, i: number) => {
+        doc.fontSize(10).fillColor('#2d3748').text(`${i + 1}. ${m}`, { indent: 10 });
+      });
+      doc.moveDown(0.5);
+    }
+
+    // Timeline with scripts
+    addSectionHeader(doc, 'DEROULEMENT MINUTE PAR MINUTE', accentColor);
+
+    let currentTime = 0;
+    timeline.forEach((phase: any, phaseIndex: number) => {
+      // Phase header
+      doc.rect(50, doc.y, 495, 25).fill('#ebf8ff');
+      doc.fillColor(primaryColor).fontSize(12).text(
+        `${formatTime(currentTime)} - ${phase.name} (${phase.duration} min)`,
+        55, doc.y + 5
+      );
+      doc.y += 30;
+      doc.moveDown(0.3);
+
+      // Phase activities
+      const phaseActivities = activities.filter((a: any) =>
+        phase.activityIds?.includes(a.id)
+      );
+
+      if (phaseActivities.length > 0) {
+        phaseActivities.forEach((act: any) => {
+          // Activity timing
+          doc.fontSize(11).fillColor(accentColor).text(
+            `[${formatTime(currentTime)}] ${act.name} - ${act.duration} min`,
+            { indent: 15 }
+          );
+
+          // Trainer instructions (main script)
+          if (act.instructions?.trainer) {
+            doc.fontSize(10).fillColor('#2d3748');
+            doc.text('Ce que vous faites :', { indent: 20, continued: false });
+            doc.fontSize(9).fillColor('#4a5568').text(act.instructions.trainer, { indent: 25 });
+          }
+
+          // What to say (if welcome script exists)
+          if (phaseIndex === 0 && act.type === 'plenary' && introduction.welcomeScript) {
+            doc.fontSize(10).fillColor('#2d3748').text('Ce que vous dites :', { indent: 20 });
+            doc.fontSize(9).fillColor('#553c9a').text(`"${introduction.welcomeScript}"`, { indent: 25 });
+          }
+
+          // Participant instructions
+          if (act.instructions?.participants) {
+            doc.fontSize(10).fillColor('#2d3748').text('Consigne a donner :', { indent: 20 });
+            doc.fontSize(9).fillColor('#276749').text(`"${act.instructions.participants}"`, { indent: 25 });
+          }
+
+          // Debrief points
+          if (act.debrief) {
+            doc.fontSize(10).fillColor('#c53030').text('Points de debrief :', { indent: 20 });
+            doc.fontSize(9).text(act.debrief, { indent: 25 });
+          }
+
+          currentTime += act.duration;
+          doc.moveDown(0.5);
+
+          // Page break if needed
+          if (doc.y > 700) {
+            doc.addPage();
+          }
+        });
+      }
+
+      // If no activities linked, just advance time
+      if (phaseActivities.length === 0) {
+        currentTime += phase.duration;
+        doc.fontSize(9).fillColor('#718096').text('(voir details dans la fiche complete)', { indent: 20 });
+        doc.moveDown(0.3);
+      }
+
+      // Page break between major phases
+      if (doc.y > 650 && phaseIndex < timeline.length - 1) {
+        doc.addPage();
+      }
+    });
+
+    // Closing script
+    if (synthesis.closingScript) {
+      if (doc.y > 600) doc.addPage();
+      addSectionHeader(doc, 'CLOTURE', successColor);
+      doc.fontSize(10).fillColor('#2d3748').text('Script de cloture :', { indent: 10 });
+      doc.fontSize(9).fillColor('#553c9a').text(`"${synthesis.closingScript}"`, { indent: 15 });
+      doc.moveDown(0.5);
+    }
+
+    // Adaptation tips (bottom of last page or new page)
+    if (trainerNotes.adaptationTips) {
+      if (doc.y > 650) doc.addPage();
+      addSectionHeader(doc, 'SI CA NE SE PASSE PAS COMME PREVU...', alertColor);
+
+      if (trainerNotes.adaptationTips.timing) {
+        doc.fontSize(9).fillColor('#2d3748');
+        doc.text(`En retard : ${trainerNotes.adaptationTips.timing}`, { indent: 10 });
+      }
+      if (trainerNotes.adaptationTips.engagement) {
+        doc.text(`Groupe passif : ${trainerNotes.adaptationTips.engagement}`, { indent: 10 });
+      }
+      if (trainerNotes.adaptationTips.difficulties) {
+        doc.text(`Difficultes : ${trainerNotes.adaptationTips.difficulties}`, { indent: 10 });
+      }
+    }
+
+    // Footer
+    doc.moveDown(2);
+    doc.fontSize(8).fillColor('#a0aec0');
+    doc.text(`Script genere par ATELIER FORGE — ${new Date().toLocaleDateString('fr-FR')}`, { align: 'center' });
+
+    doc.end();
+  });
+}
+
+function generateWorkshopPrintableHtml(workshop: any): string {
+  const introduction = workshop.introduction as any || {};
+  const timeline = workshop.timeline as any[] || [];
+  const activities = workshop.activities as any[] || [];
+  const synthesis = workshop.synthesis as any || {};
+
+  const primaryComp = workshop.competencies.find((wc: any) => wc.isPrimary)?.competency;
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${workshop.title} - Atelier</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+      .page-break { page-break-before: always; }
+    }
+    h1 { font-size: 28px; color: #1a365d; margin-bottom: 10px; text-align: center; }
+    h2 { font-size: 20px; color: #2d3748; margin: 30px 0 15px; padding-bottom: 5px; border-bottom: 3px solid #3182ce; }
+    h3 { font-size: 16px; color: #4a5568; margin: 20px 0 10px; }
+    .header { text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
+    .subtitle { color: #718096; font-size: 14px; margin-top: 5px; }
+    .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; background: #f7fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+    .meta-item { text-align: center; }
+    .meta-label { font-weight: 600; color: #4a5568; font-size: 12px; text-transform: uppercase; }
+    .meta-value { font-size: 16px; color: #2d3748; margin-top: 5px; }
+    .phase { margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #ebf8ff 0%, #fff 100%); border-radius: 12px; border-left: 4px solid #3182ce; }
+    .phase-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .phase-name { font-size: 18px; font-weight: 600; color: #1a365d; }
+    .phase-time { background: #3182ce; color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px; }
+    .activity { margin: 10px 0; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .activity-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .activity-name { font-weight: 600; color: #2d3748; }
+    .activity-badges { display: flex; gap: 8px; }
+    .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+    .badge-time { background: #bee3f8; color: #2b6cb0; }
+    .badge-type { background: #c6f6d5; color: #276749; }
+    .badge-bloom { background: #e9d8fd; color: #553c9a; }
+    .key-points { background: #f0fff4; padding: 20px; border-radius: 8px; margin-top: 20px; }
+    .key-points h3 { color: #276749; margin-bottom: 10px; }
+    .key-points ul { margin-left: 20px; }
+    .print-btn { position: fixed; top: 20px; right: 20px; padding: 12px 24px; background: #3182ce; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; box-shadow: 0 2px 8px rgba(49,130,206,0.3); }
+    .print-btn:hover { background: #2c5282; }
+    .footer { margin-top: 40px; text-align: center; color: #a0aec0; font-size: 12px; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">Imprimer / PDF</button>
+
+  <div class="header">
+    <h1>${workshop.title}</h1>
+    <p class="subtitle">${primaryComp?.code || ''} - ${primaryComp?.title || ''}</p>
+    ${workshop.description ? `<p style="margin-top: 10px; color: #4a5568;">${workshop.description}</p>` : ''}
+  </div>
+
+  <div class="meta">
+    <div class="meta-item">
+      <div class="meta-label">Duree</div>
+      <div class="meta-value">${workshop.duration} min</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Participants</div>
+      <div class="meta-value">${workshop.participantMin}-${workshop.participantMax}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Format</div>
+      <div class="meta-value">${formatLabel(workshop.format)}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Secteur</div>
+      <div class="meta-value">${workshop.sector}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Public</div>
+      <div class="meta-value">${workshop.audienceType}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Score</div>
+      <div class="meta-value">${workshop.confidenceScore}%</div>
+    </div>
+  </div>
+
+  <h2>Deroulement</h2>
+  ${timeline.map((phase: any) => {
+    const phaseActivities = activities.filter((a: any) => phase.activityIds?.includes(a.id));
+    return `
+    <div class="phase">
+      <div class="phase-header">
+        <span class="phase-name">${phase.name}</span>
+        <span class="phase-time">${phase.duration} min</span>
+      </div>
+      ${phase.objectives?.length ? `<p style="color: #4a5568; font-size: 14px; margin-bottom: 10px;"><strong>Objectifs:</strong> ${phase.objectives.join(' | ')}</p>` : ''}
+      ${phaseActivities.map((act: any) => `
+        <div class="activity">
+          <div class="activity-header">
+            <span class="activity-name">${act.name}</span>
+            <div class="activity-badges">
+              <span class="badge badge-time">${act.duration} min</span>
+              <span class="badge badge-type">${activityTypeLabel(act.type)}</span>
+              <span class="badge badge-bloom">Bloom ${act.bloomLevel}</span>
+            </div>
+          </div>
+          ${act.instructions?.participants ? `<p style="font-size: 14px;"><strong>Consigne:</strong> ${act.instructions.participants}</p>` : ''}
+        </div>
+      `).join('')}
+    </div>
+    `;
+  }).join('')}
+
+  ${synthesis.keyTakeaways?.length ? `
+  <div class="key-points">
+    <h3>Points cles a retenir</h3>
+    <ul>
+      ${synthesis.keyTakeaways.map((kt: string) => `<li>${kt}</li>`).join('')}
+    </ul>
+  </div>
+  ` : ''}
+
+  <div class="footer">
+    <p>Genere par ATELIER FORGE — ${new Date().toLocaleDateString('fr-FR')}</p>
+    <p>Auteur: ${workshop.user.firstName} ${workshop.user.lastName}</p>
+  </div>
+</body>
+</html>`;
+}
+
+function formatTime(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h > 0) {
+    return `${h}h${m.toString().padStart(2, '0')}`;
+  }
+  return `${m}'`;
+}

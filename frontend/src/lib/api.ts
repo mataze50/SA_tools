@@ -322,6 +322,18 @@ export const workshopsApi = {
 
 // Workshop Export (Sprint 16)
 export const workshopExportApi = {
+  // Mode A - DOCX Fiche complete
+  docx: (workshopId: string) =>
+    api.get(`/export/workshop-docx/${workshopId}`, { responseType: 'blob' }),
+
+  // Mode A - Script animation PDF
+  script: (workshopId: string) =>
+    api.get(`/export/workshop-script/${workshopId}`, { responseType: 'blob' }),
+
+  // Mode A - HTML printable
+  html: (workshopId: string) => api.get(`/export/workshop-html/${workshopId}`),
+
+  // Mode B - SCORM
   scorm: (workshopId: string, options?: { version?: string; organization?: string; masteryScore?: number }) =>
     api.get(`/export/workshop-scorm/${workshopId}`, {
       responseType: 'blob',
@@ -354,6 +366,20 @@ export const workshopGenerationApi = {
 
   createWorkshop: (sessionId: string, title?: string) =>
     api.post(`/workshop-generation/${sessionId}/create-workshop`, { title })
+}
+
+// Workshop Quiz (Sprint 16 - Playbook aligned: 10 questions)
+export const workshopQuizApi = {
+  get: (workshopId: string) => api.get(`/workshop-quiz/${workshopId}`),
+
+  generate: (workshopId: string) => api.post(`/workshop-quiz/generate/${workshopId}`),
+
+  regenerate: (workshopId: string) => api.post(`/workshop-quiz/regenerate/${workshopId}`),
+
+  update: (workshopId: string, questions: any[], metadata?: any) =>
+    api.patch(`/workshop-quiz/${workshopId}`, { questions, metadata }),
+
+  delete: (workshopId: string) => api.delete(`/workshop-quiz/${workshopId}`)
 }
 
 export default api

@@ -82,34 +82,34 @@ Activités adaptées: projets, productions originales, plans d'action
 `;
 
 const WORKSHOP_STRUCTURE_TEMPLATE = `
-## STRUCTURE TYPE D'UN ATELIER DE FORMATION
+## STRUCTURE FIXE D'UN ATELIER DE 75 MINUTES
 
-### Phase 1 - ACCUEIL (5-10% du temps)
-- Présentation du formateur et des participants
-- Ice-breaker pour créer la dynamique de groupe
-- Présentation des objectifs et du déroulé
-- Recueil des attentes
+L'atelier suit une structure FIXE de 75 minutes répartie en 5 phases obligatoires.
 
-### Phase 2 - DÉCOUVERTE (15-20% du temps)
-- Apport théorique synthétique (max 15 min continu)
-- Démonstration ou exemple concret
+### Phase 1 - ACCUEIL (10 minutes)
+- Présentation du formateur (2 min)
+- Ice-breaker rapide pour créer la dynamique (5 min)
+- Présentation des objectifs et du déroulé (3 min)
+
+### Phase 2 - DÉCOUVERTE (15 minutes)
+- Apport théorique synthétique (max 10 min continu)
+- Exemple concret ou démonstration (5 min)
 - Premier questionnement collectif
 
-### Phase 3 - APPROPRIATION (25-30% du temps)
-- Exercices en sous-groupes ou binômes
-- Études de cas progressives
-- Manipulation d'outils ou techniques
+### Phase 3 - APPROPRIATION (20 minutes)
+- Exercice en sous-groupes ou binômes (12-15 min)
+- Debriefing collectif (5-8 min)
 
-### Phase 4 - APPLICATION (30-35% du temps)
-- Mise en situation réaliste
-- Jeux de rôle ou simulations
-- Production individuelle ou collective
+### Phase 4 - APPLICATION (20 minutes)
+- Mise en situation réaliste ou jeu de rôle (12-15 min)
+- Feedback et analyse (5-8 min)
 
-### Phase 5 - SYNTHÈSE (10-15% du temps)
-- Formalisation des apprentissages
-- Plan d'action personnel
-- Évaluation et feedback
-- Clôture positive
+### Phase 5 - SYNTHÈSE (10 minutes)
+- Points clés à retenir (3 min)
+- Plan d'action personnel (4 min)
+- Clôture et évaluation rapide (3 min)
+
+**RÈGLE IMPORTANTE**: La durée totale DOIT être exactement 75 minutes (10+15+20+20+10).
 `;
 
 // ============================================
@@ -324,10 +324,16 @@ Génère un atelier de formation COMPLET et OPÉRATIONNEL au format JSON.
    - Les objectifs utilisent les verbes de Bloom (niveaux 3 à 6 prioritaires)
    - Progression pédagogique: du simple au complexe
 
-2. **COHÉRENCE TEMPORELLE**
-   - La somme des durées = ${context.duration} minutes exactement
-   - Respecter les proportions: Accueil (5-10%), Découverte (15-20%), Appropriation (25-30%), Application (30-35%), Synthèse (10-15%)
-   - Alterner théorie (max 15 min) et pratique
+2. **COHÉRENCE TEMPORELLE - STRUCTURE FIXE 75 MINUTES**
+   - La durée totale DOIT être exactement 75 minutes
+   - Structure OBLIGATOIRE:
+     * Accueil: 10 minutes
+     * Découverte: 15 minutes
+     * Appropriation: 20 minutes
+     * Application: 20 minutes
+     * Synthèse: 10 minutes
+   - Alterner théorie (max 10 min continu) et pratique
+   - IGNORER le paramètre duration reçu, utiliser 75 min
 
 3. **OPÉRATIONNALITÉ**
    - Instructions formateur précises et actionnables
@@ -383,10 +389,46 @@ Génère UNIQUEMENT le JSON suivant (pas de texte avant ou après):
       "id": "P1",
       "name": "Accueil",
       "startTime": 0,
-      "duration": 15,
+      "duration": 10,
       "type": "accueil",
       "activityIds": ["A1", "A2"],
       "objectives": ["Créer un climat de confiance", "Cadrer l'atelier"]
+    },
+    {
+      "id": "P2",
+      "name": "Découverte",
+      "startTime": 10,
+      "duration": 15,
+      "type": "decouverte",
+      "activityIds": ["A3"],
+      "objectives": ["Comprendre les concepts clés"]
+    },
+    {
+      "id": "P3",
+      "name": "Appropriation",
+      "startTime": 25,
+      "duration": 20,
+      "type": "appropriation",
+      "activityIds": ["A4", "A5"],
+      "objectives": ["Pratiquer en sous-groupe"]
+    },
+    {
+      "id": "P4",
+      "name": "Application",
+      "startTime": 45,
+      "duration": 20,
+      "type": "application",
+      "activityIds": ["A6", "A7"],
+      "objectives": ["Mettre en situation réelle"]
+    },
+    {
+      "id": "P5",
+      "name": "Synthèse",
+      "startTime": 65,
+      "duration": 10,
+      "type": "synthese",
+      "activityIds": ["A8"],
+      "objectives": ["Ancrer les apprentissages"]
     }
   ],
   "activities": [
@@ -522,11 +564,21 @@ function calculateWorkshopConfidence(workshop: GeneratedWorkshop, context: Works
   let score = 100;
   const issues: string[] = [];
 
-  // Check timeline total duration
+  // Check timeline total duration (must be exactly 75 minutes)
   const totalDuration = workshop.timeline.reduce((sum, phase) => sum + phase.duration, 0);
-  if (Math.abs(totalDuration - context.duration) > 5) {
-    score -= 15;
-    issues.push(`Duration mismatch: ${totalDuration} vs ${context.duration}`);
+  if (totalDuration !== 75) {
+    score -= 20;
+    issues.push(`Duration mismatch: ${totalDuration} vs 75 minutes (required)`);
+  }
+
+  // Check 5 phases structure
+  const requiredPhases = ['accueil', 'decouverte', 'appropriation', 'application', 'synthese'];
+  const actualPhases = workshop.timeline.map(p => p.type);
+  for (const phase of requiredPhases) {
+    if (!actualPhases.includes(phase)) {
+      score -= 10;
+      issues.push(`Missing phase: ${phase}`);
+    }
   }
 
   // Check all competencies are covered
@@ -605,28 +657,46 @@ export async function validateWorkshop(
   const suggestions: WorkshopSuggestion[] = [];
   let score = 100;
 
-  // 1. Timing validation
+  // 1. Timing validation - FIXED 75 MINUTES STRUCTURE
   const totalDuration = workshop.timeline.reduce((sum, phase) => sum + phase.duration, 0);
-  if (totalDuration !== context.duration) {
+  if (totalDuration !== 75) {
     issues.push({
       id: 'T1',
-      type: totalDuration > context.duration + 10 ? 'error' : 'warning',
+      type: 'error',
       category: 'timing',
-      message: `Durée totale (${totalDuration} min) différente de la durée prévue (${context.duration} min)`
+      message: `Durée totale (${totalDuration} min) doit être exactement 75 minutes`
     });
-    score -= Math.abs(totalDuration - context.duration) > 10 ? 15 : 5;
+    score -= 20;
   }
 
-  // Check phase proportions
-  const accueilPhase = workshop.timeline.find(p => p.type === 'accueil');
-  if (accueilPhase && (accueilPhase.duration / context.duration) > 0.15) {
-    issues.push({
-      id: 'T2',
-      type: 'warning',
-      category: 'timing',
-      message: 'Phase d\'accueil trop longue (> 15% du temps total)'
-    });
-    score -= 5;
+  // Check 5 phases structure
+  const requiredPhases: { type: string; duration: number; name: string }[] = [
+    { type: 'accueil', duration: 10, name: 'Accueil' },
+    { type: 'decouverte', duration: 15, name: 'Découverte' },
+    { type: 'appropriation', duration: 20, name: 'Appropriation' },
+    { type: 'application', duration: 20, name: 'Application' },
+    { type: 'synthese', duration: 10, name: 'Synthèse' }
+  ];
+
+  for (const req of requiredPhases) {
+    const phase = workshop.timeline.find(p => p.type === req.type);
+    if (!phase) {
+      issues.push({
+        id: `T_${req.type}`,
+        type: 'error',
+        category: 'timing',
+        message: `Phase ${req.name} manquante`
+      });
+      score -= 10;
+    } else if (phase.duration !== req.duration) {
+      issues.push({
+        id: `T_${req.type}_dur`,
+        type: 'warning',
+        category: 'timing',
+        message: `Phase ${req.name}: ${phase.duration} min au lieu de ${req.duration} min`
+      });
+      score -= 5;
+    }
   }
 
   // 2. Competency coverage validation
@@ -813,8 +883,217 @@ Retourne UNIQUEMENT le JSON amélioré.`;
   }
 }
 
+// ============================================
+// WORKSHOP QUIZ GENERATION
+// ============================================
+
+export interface WorkshopQuiz {
+  questions: WorkshopQuizQuestion[];
+  metadata: {
+    totalQuestions: number;
+    qcmCount: number;
+    trueFalseCount: number;
+    situationCount: number;
+    passingScore: number;
+    maxAttempts: number;
+  };
+}
+
+export interface WorkshopQuizQuestion {
+  id: string;
+  type: 'qcm' | 'true-false' | 'situation';
+  text: string;
+  objectiveRef: number; // 1-5
+  competencyCode: string;
+  bloomLevel: number;
+  difficulty: 'facile' | 'moyen' | 'difficile';
+  choices: {
+    id: string;
+    text: string;
+    isCorrect: boolean;
+  }[];
+  explanation: string;
+  points: number;
+  context?: string; // For situation questions
+}
+
+function buildWorkshopQuizPrompt(workshop: GeneratedWorkshop, context: WorkshopGenerationContext): string {
+  const primaryComp = context.competencies.find(c => c.isPrimary);
+
+  // Extract objectives from activities
+  const objectives = workshop.activities
+    .filter(a => a.objectives && a.objectives.length > 0)
+    .flatMap(a => a.objectives)
+    .filter((v, i, arr) => arr.indexOf(v) === i) // Unique
+    .slice(0, 5); // Max 5 objectives
+
+  return `Tu es un expert en évaluation pédagogique. Crée un quiz de 10 questions aligné sur cet atelier de formation.
+
+## ATELIER DE RÉFÉRENCE
+
+**Titre**: ${workshop.title}
+**Description**: ${workshop.description}
+**Compétence principale**: ${primaryComp?.code} - ${primaryComp?.title}
+**Durée**: ${context.duration} minutes
+
+**Objectifs d'apprentissage**:
+${objectives.map((o, i) => `${i + 1}. ${o}`).join('\n')}
+
+**Activités clés**:
+${workshop.activities.map(a => `- ${a.name} (Bloom niveau ${a.bloomLevel}): ${a.objectives.join(', ')}`).join('\n')}
+
+**Points clés à retenir**:
+${workshop.synthesis.keyTakeaways.map(t => `- ${t}`).join('\n')}
+
+---
+
+## RÈGLES DE GÉNÉRATION DU QUIZ
+
+### Distribution des questions (OBLIGATOIRE):
+- **6 QCM** (Questions à Choix Multiple): 4 options, 1 seule correcte
+- **2 Vrai/Faux**: Affirmations à valider ou invalider
+- **2 Mises en situation**: Scénarios contextualisés avec analyse
+
+### Alignement pédagogique:
+- **2 questions par objectif** (si 5 objectifs)
+- Progression des niveaux de Bloom dans les questions
+- Questions faciles (2), moyennes (5), difficiles (3)
+
+### Format JSON attendu:
+
+\`\`\`json
+{
+  "questions": [
+    {
+      "id": "Q1",
+      "type": "qcm",
+      "text": "Question claire et précise...",
+      "objectiveRef": 1,
+      "competencyCode": "${primaryComp?.code}",
+      "bloomLevel": 3,
+      "difficulty": "facile",
+      "choices": [
+        { "id": "A", "text": "Option A", "isCorrect": false },
+        { "id": "B", "text": "Option B", "isCorrect": true },
+        { "id": "C", "text": "Option C", "isCorrect": false },
+        { "id": "D", "text": "Option D", "isCorrect": false }
+      ],
+      "explanation": "Explication pédagogique de la bonne réponse...",
+      "points": 1
+    },
+    {
+      "id": "Q7",
+      "type": "true-false",
+      "text": "Affirmation à évaluer...",
+      "objectiveRef": 3,
+      "competencyCode": "${primaryComp?.code}",
+      "bloomLevel": 4,
+      "difficulty": "moyen",
+      "choices": [
+        { "id": "V", "text": "Vrai", "isCorrect": true },
+        { "id": "F", "text": "Faux", "isCorrect": false }
+      ],
+      "explanation": "Justification de la réponse...",
+      "points": 1
+    },
+    {
+      "id": "Q9",
+      "type": "situation",
+      "text": "Question d'analyse...",
+      "context": "Vous êtes conseiller CEP et un bénéficiaire vous présente la situation suivante...",
+      "objectiveRef": 5,
+      "competencyCode": "${primaryComp?.code}",
+      "bloomLevel": 5,
+      "difficulty": "difficile",
+      "choices": [
+        { "id": "A", "text": "Approche A", "isCorrect": false },
+        { "id": "B", "text": "Approche B", "isCorrect": false },
+        { "id": "C", "text": "Approche C", "isCorrect": true },
+        { "id": "D", "text": "Approche D", "isCorrect": false }
+      ],
+      "explanation": "Analyse de la situation et justification de la meilleure approche...",
+      "points": 2
+    }
+  ],
+  "metadata": {
+    "totalQuestions": 10,
+    "qcmCount": 6,
+    "trueFalseCount": 2,
+    "situationCount": 2,
+    "passingScore": 70,
+    "maxAttempts": 3
+  }
+}
+\`\`\`
+
+IMPORTANT:
+- Génère exactement 10 questions
+- Respecte la distribution: 6 QCM + 2 V/F + 2 situations
+- Chaque question doit avoir un lien clair avec le contenu de l'atelier
+- Les questions situation doivent inclure un contexte réaliste
+
+Retourne UNIQUEMENT le JSON, sans texte avant ou après.`;
+}
+
+export async function generateWorkshopQuiz(
+  workshop: GeneratedWorkshop,
+  context: WorkshopGenerationContext
+): Promise<WorkshopQuiz> {
+  const prompt = buildWorkshopQuizPrompt(workshop, context);
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    let textContent = '';
+    for (const block of response.content) {
+      if (block.type === 'text') {
+        textContent = block.text;
+        break;
+      }
+    }
+
+    // Parse JSON from response
+    const jsonMatch = textContent.match(/```json\n?([\s\S]*?)\n?```/) ||
+                      textContent.match(/\{[\s\S]*\}/);
+
+    if (!jsonMatch) {
+      throw new Error('No valid JSON found in quiz response');
+    }
+
+    const jsonStr = jsonMatch[1] || jsonMatch[0];
+    const quiz = JSON.parse(jsonStr) as WorkshopQuiz;
+
+    // Validate quiz structure
+    if (!quiz.questions || !Array.isArray(quiz.questions)) {
+      throw new Error('Invalid quiz structure: missing questions array');
+    }
+
+    // Ensure metadata exists
+    if (!quiz.metadata) {
+      quiz.metadata = {
+        totalQuestions: quiz.questions.length,
+        qcmCount: quiz.questions.filter(q => q.type === 'qcm').length,
+        trueFalseCount: quiz.questions.filter(q => q.type === 'true-false').length,
+        situationCount: quiz.questions.filter(q => q.type === 'situation').length,
+        passingScore: 70,
+        maxAttempts: 3
+      };
+    }
+
+    return quiz;
+  } catch (error) {
+    console.error('Workshop quiz generation error:', error);
+    throw error;
+  }
+}
+
 export default {
   generateWorkshop,
   validateWorkshop,
-  improveWorkshop
+  improveWorkshop,
+  generateWorkshopQuiz
 };

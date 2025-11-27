@@ -119,6 +119,7 @@ model Workshop {
   user            User           @relation(fields: [userId], references: [id])
   competencies    WorkshopCompetency[]
   sheets          Sheet[]        // Individual activity sheets within workshop
+  quiz            WorkshopQuiz?  // Associated quiz (10 questions)
 
   @@index([userId])
   @@index([status])
@@ -310,6 +311,21 @@ model Quiz {
   @@map("quizzes")
 }
 
+// Workshop Quiz (Sprint 16 - Playbook aligned)
+model WorkshopQuiz {
+  id          String   @id @default(uuid())
+  questions   Json     // Array of quiz questions (6 QCM + 2 V/F + 2 situations)
+  metadata    Json?    // Quiz metadata (totalQuestions, passingScore, etc.)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  workshopId  String   @unique
+  workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@map("workshop_quizzes")
+}
+
 // ============================================
 // TEMPLATES
 // ============================================
@@ -421,6 +437,7 @@ model WorkshopGenerationSession {
 enum WorkshopGenerationStatus {
   PENDING
   ANALYZING           // Analyzing subject + competencies
+  ENRICHING           // Perplexity enrichment (situations, biblio, trends)
   STRUCTURING         // Creating workshop structure
   GENERATING_INTRO    // Generating introduction
   GENERATING_ACTIVITIES // Generating each activity

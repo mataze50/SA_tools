@@ -9,6 +9,7 @@ import {
   WorkshopGenerationContext,
   GeneratedWorkshop
 } from '../services/ai/workshopGenerator.js';
+import { enrichContext, EnrichmentContext } from '../services/ai/perplexity.js';
 import { z } from 'zod';
 
 export const workshopGenerationRouter = Router();
@@ -327,13 +328,56 @@ async function runGenerationPipeline(sessionId: string, userId: string) {
     // =====================
     // STEP 1: ANALYZING
     // =====================
-    updateProgress('ANALYZING', 10, 'Analyse du sujet et des competences...');
+    updateProgress('ANALYZING', 5, 'Analyse du sujet et des competences...');
     await prisma.workshopGenerationSession.update({
       where: { id: sessionId },
       data: { status: 'ANALYZING' }
     });
 
-    // Build generation context
+    // Get primary competency for enrichment
+    const primaryCompetency = inputContext.competencies.find((c: any) => c.isPrimary) || inputContext.competencies[0];
+
+    // =====================
+    // STEP 2: ENRICHING (Perplexity - 3 parallel calls)
+    // =====================
+    updateProgress('ENRICHING', 10, 'Enrichissement via Perplexity (situations, biblio, tendances)...');
+    await prisma.workshopGenerationSession.update({
+      where: { id: sessionId },
+      data: { status: 'ENRICHING' }
+    });
+
+    // Build enrichment context
+    const enrichmentContext: EnrichmentContext = {
+      competencyCode: primaryCompetency.code,
+      competencyTitle: primaryCompetency.title,
+      sector: inputContext.sector,
+      audienceType: inputContext.audienceType
+    };
+
+    // Call Perplexity (3 parallel API calls)
+    let enrichmentData;
+    try {
+      enrichmentData = await enrichContext(enrichmentContext);
+      perplexityCalls += 3; // 3 parallel calls: situations, bibliography, trends
+    } catch (error) {
+      console.warn('Perplexity enrichment failed, using defaults:', error);
+      enrichmentData = {
+        situations: [
+          `Situation professionnelle type dans le secteur ${inputContext.sector}`,
+          'Cas de transition professionnelle complexe nécessitant un accompagnement'
+        ],
+        bibliography: [
+          'Référentiel des compétences du CEP - DGEFP (2024)',
+          'Guide des bonnes pratiques en accompagnement - France Compétences'
+        ],
+        trends: [
+          'Digitalisation des pratiques d\'accompagnement',
+          'Montée en compétences sur les soft skills'
+        ]
+      };
+    }
+
+    // Build generation context with enrichment
     const generationContext: WorkshopGenerationContext = {
       subject: session.subject,
       competencies: inputContext.competencies,
@@ -342,11 +386,24 @@ async function runGenerationPipeline(sessionId: string, userId: string) {
       format: inputContext.format,
       duration: inputContext.duration,
       participantMin: inputContext.participantMin,
-      participantMax: inputContext.participantMax
+      participantMax: inputContext.participantMax,
+      enrichmentData: {
+        situations: enrichmentData.situations,
+        resources: enrichmentData.bibliography, // Map bibliography -> resources
+        trends: enrichmentData.trends
+      }
     };
 
+    // Save enrichment data to session
+    await prisma.workshopGenerationSession.update({
+      where: { id: sessionId },
+      data: {
+        enrichmentData: enrichmentData as any
+      }
+    });
+
     // =====================
-    // STEP 2: STRUCTURING
+    // STEP 3: STRUCTURING
     // =====================
     updateProgress('STRUCTURING', 20, 'Structuration de l\'atelier...');
     await prisma.workshopGenerationSession.update({
@@ -358,7 +415,7 @@ async function runGenerationPipeline(sessionId: string, userId: string) {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // =====================
-    // STEP 3: GENERATING
+    // STEP 4: GENERATING
     // =====================
     updateProgress('GENERATING_INTRO', 30, 'Generation de l\'introduction...');
     await prisma.workshopGenerationSession.update({
@@ -386,7 +443,7 @@ async function runGenerationPipeline(sessionId: string, userId: string) {
     });
 
     // =====================
-    // STEP 4: VALIDATING
+    // STEP 5: VALIDATING
     // =====================
     updateProgress('VALIDATING', 80, 'Validation pedagogique...');
     await prisma.workshopGenerationSession.update({
@@ -402,7 +459,7 @@ async function runGenerationPipeline(sessionId: string, userId: string) {
     });
 
     // =====================
-    // STEP 5: IMPROVING (if needed)
+    // STEP 6: IMPROVING (if needed)
     // =====================
     let finalWorkshop = generatedWorkshop;
 
@@ -418,7 +475,7 @@ async function runGenerationPipeline(sessionId: string, userId: string) {
     }
 
     // =====================
-    // STEP 6: COMPLETION
+    // STEP 7: COMPLETION
     // =====================
     const totalDuration = Date.now() - startTime;
     const estimatedCost = claudeCalls * 0.15 + perplexityCalls * 0.02;
