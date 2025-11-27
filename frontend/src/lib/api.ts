@@ -128,7 +128,18 @@ export const exportApi = {
 
   revokeShare: (sheetId: string) => api.delete(`/export/share/${sheetId}`),
 
-  shareStatus: (sheetId: string) => api.get(`/export/share-status/${sheetId}`)
+  shareStatus: (sheetId: string) => api.get(`/export/share-status/${sheetId}`),
+
+  // SCORM Export (Sprint 8)
+  scorm: (sheetId: string, options?: { version?: string; organization?: string; masteryScore?: number }) =>
+    api.get(`/export/scorm/${sheetId}`, {
+      responseType: 'blob',
+      params: options
+    }),
+
+  scormValidate: (sheetId: string) => api.post(`/export/scorm/validate/${sheetId}`),
+
+  scormPreview: (sheetId: string) => api.get(`/export/scorm/preview/${sheetId}`)
 }
 
 // Dashboard

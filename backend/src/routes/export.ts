@@ -16,6 +16,7 @@ import {
 import { prisma } from '../lib/prisma.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { exportSheetAsScorm } from '../scorm/services/scormExportService.js';
 
 export const exportRouter = Router();
 
@@ -297,6 +298,180 @@ exportRouter.get('/share-status/:sheetId', authenticate, async (req: AuthRequest
         isShared,
         shareToken: isShared ? sheet.shareToken : null,
         expiresAt: isShared ? sheet.shareExpiresAt : null
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// SCORM EXPORT (Sprint 8)
+// ============================================
+
+// GET /api/export/scorm/:sheetId - Export sheet as SCORM package
+exportRouter.get('/scorm/:sheetId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { version = '1.2', organization, masteryScore } = req.query;
+
+    // Validate SCORM version
+    const validVersions = ['1.2', '2004-3rd', '2004-4th'];
+    if (!validVersions.includes(version as string)) {
+      throw new AppError('Invalid SCORM version. Use: 1.2, 2004-3rd, or 2004-4th', 400);
+    }
+
+    const result = await exportSheetAsScorm({
+      sheetId: req.params.sheetId,
+      userId: req.user!.id,
+      version: version as '1.2' | '2004-3rd' | '2004-4th',
+      organization: organization as string || 'HARMONIA GROUP',
+      masteryScore: masteryScore ? parseInt(masteryScore as string, 10) : 80
+    });
+
+    if (!result.result.success) {
+      throw new AppError(result.result.error || 'SCORM export failed', 400);
+    }
+
+    if (!result.buffer) {
+      throw new AppError('Failed to generate SCORM package', 500);
+    }
+
+    // Send ZIP file
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${result.result.fileName}"`);
+    res.setHeader('Content-Length', result.buffer.length);
+    res.send(result.buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/scorm/preview/:sheetId - Preview SCORM module (HTML)
+exportRouter.get('/scorm/preview/:sheetId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const sheet = await prisma.sheet.findFirst({
+      where: {
+        id: req.params.sheetId,
+        userId: req.user!.id
+      },
+      include: {
+        competency: true,
+        user: { select: { firstName: true, lastName: true } },
+        quiz: true
+      }
+    });
+
+    if (!sheet) {
+      throw new AppError('Sheet not found', 404);
+    }
+
+    // Check if sheet has quiz
+    const content = sheet.content as any || {};
+    if (!content.quiz?.questions || content.quiz.questions.length < 5) {
+      throw new AppError('Quiz incomplet - minimum 5 questions requises pour export SCORM', 400);
+    }
+
+    // Generate preview info
+    res.json({
+      success: true,
+      data: {
+        title: sheet.title,
+        competency: sheet.competency,
+        sectionsCount: 6,
+        questionsCount: content.quiz.questions.length,
+        estimatedDuration: sheet.duration,
+        canExport: true,
+        exportFormats: [
+          { version: '1.2', label: 'SCORM 1.2 (compatibilite maximale)' },
+          { version: '2004-3rd', label: 'SCORM 2004 3rd Edition' },
+          { version: '2004-4th', label: 'SCORM 2004 4th Edition' }
+        ]
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/export/scorm/validate/:sheetId - Validate sheet for SCORM export
+exportRouter.post('/scorm/validate/:sheetId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const sheet = await prisma.sheet.findFirst({
+      where: {
+        id: req.params.sheetId,
+        userId: req.user!.id
+      },
+      include: {
+        competency: true
+      }
+    });
+
+    if (!sheet) {
+      throw new AppError('Sheet not found', 404);
+    }
+
+    const content = sheet.content as any || {};
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Validation checks
+    if (!sheet.competency?.code) {
+      errors.push('Code competence manquant');
+    }
+
+    if (!sheet.title) {
+      errors.push('Titre manquant');
+    }
+
+    const objectives = content.objectives || [];
+    if (objectives.length === 0) {
+      errors.push('Objectifs pedagogiques manquants');
+    } else if (objectives.length < 3) {
+      warnings.push('Recommandation: au moins 3 objectifs pedagogiques');
+    }
+
+    const quiz = content.quiz || {};
+    const questions = quiz.questions || [];
+    if (questions.length < 5) {
+      errors.push(`Quiz incomplet: ${questions.length}/5 questions minimum`);
+    }
+
+    // Validate each question
+    questions.forEach((q: any, i: number) => {
+      if (!q.text) {
+        errors.push(`Question ${i + 1}: enonce manquant`);
+      }
+      if (!q.choices || q.choices.length < 2) {
+        errors.push(`Question ${i + 1}: minimum 2 options requises`);
+      }
+      if (!q.choices?.some((c: any) => c.isCorrect)) {
+        errors.push(`Question ${i + 1}: aucune reponse correcte definie`);
+      }
+    });
+
+    const situations = content.situations || [];
+    if (situations.length === 0) {
+      warnings.push('Aucune situation professionnelle definie');
+    }
+
+    const flow = content.flow || [];
+    if (flow.length === 0) {
+      warnings.push('Deroule pedagogique non defini');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        valid: errors.length === 0,
+        errors,
+        warnings,
+        summary: {
+          title: sheet.title,
+          objectivesCount: objectives.length,
+          situationsCount: situations.length,
+          phasesCount: flow.length,
+          questionsCount: questions.length
+        }
       }
     });
   } catch (error) {

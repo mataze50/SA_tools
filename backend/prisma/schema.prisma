@@ -91,11 +91,16 @@ model Sheet {
   duration        Int         @default(75) // Duration in minutes
 
   // Content (stored as JSON)
+  content         Json?       // Full content object (Sprint 7+)
   objectives      Json        // Array of objectives
   situations      Json        // Array of professional situations
   flow            Json        // Array of flow phases
   evaluation      Json        // Evaluation criteria
   resources       Json?       // Additional resources
+
+  // Public Sharing (Sprint 7)
+  shareToken      String?     @unique
+  shareExpiresAt  DateTime?
 
   // AI Metadata
   aiGenerationId  String?     // Track generation session
@@ -320,4 +325,27 @@ enum NotificationType {
   VALIDATION_NEEDS_CHANGES // Sheet needs modifications
   SHEET_REMIXED           // Your sheet was remixed
   COMMENT_ADDED           // New comment on your sheet
+}
+
+// ============================================
+// EXPORT LOG (Sprint 8 - SCORM)
+// ============================================
+
+model ExportLog {
+  id          String       @id @default(uuid())
+  exportType  String       // "SCORM", "DOCX", "PDF", etc.
+  format      String?      // SCORM version or format details
+  success     Boolean
+  errorMessage String?
+  fileSize    Int?         // Size in bytes
+  exportedAt  DateTime     @default(now())
+
+  // Relations
+  sheetId     String
+  userId      String
+
+  @@index([sheetId])
+  @@index([userId])
+  @@index([exportType])
+  @@map("export_logs")
 }

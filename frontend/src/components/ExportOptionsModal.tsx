@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { exportApi } from '../lib/api'
@@ -14,9 +14,14 @@ import {
   TrashIcon,
   ArrowPathIcon,
   CheckIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
+  AcademicCapIcon,
+  ExclamationTriangleIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
+
+type ScormVersion = '1.2' | '2004-3rd' | '2004-4th'
 
 interface ExportOptionsModalProps {
   sheetId: string
@@ -35,6 +40,8 @@ export default function ExportOptionsModal({
 }: ExportOptionsModalProps) {
   const queryClient = useQueryClient()
   const [copiedLink, setCopiedLink] = useState(false)
+  const [scormVersion, setScormVersion] = useState<ScormVersion>('1.2')
+  const [showScormOptions, setShowScormOptions] = useState(false)
 
   // Fetch share status
   const { data: shareData, isLoading: loadingShare } = useQuery({
@@ -44,6 +51,15 @@ export default function ExportOptionsModal({
   })
 
   const shareStatus = shareData?.data?.data
+
+  // SCORM validation query
+  const { data: scormValidation, isLoading: loadingScormValidation, refetch: validateScorm } = useQuery({
+    queryKey: ['scorm-validation', sheetId],
+    queryFn: () => exportApi.scormValidate(sheetId),
+    enabled: isOpen && showScormOptions
+  })
+
+  const scormStatus = scormValidation?.data?.data
 
   // Export DOCX
   const exportDocx = useMutation({
@@ -106,6 +122,26 @@ export default function ExportOptionsModal({
     window.open(`/api/export/html/${sheetId}`, '_blank')
     toast.success('Page ouverte - utilisez Imprimer > PDF')
   }
+
+  // Export SCORM
+  const exportScorm = useMutation({
+    mutationFn: () => exportApi.scorm(sheetId, { version: scormVersion }),
+    onSuccess: (res) => {
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const link = document.createElement('a')
+      link.href = url
+      const versionSuffix = scormVersion.replace(/[.-]/g, '')
+      link.setAttribute('download', `${sheetTitle.replace(/\s+/g, '_')}_SCORM${versionSuffix}.zip`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      toast.success('Package SCORM telecharge !')
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.message || "Erreur lors de l'export SCORM"
+      toast.error(message)
+    }
+  })
 
   // Create share link
   const createShare = useMutation({
@@ -215,6 +251,126 @@ export default function ExportOptionsModal({
               </div>
               {exportQuiz.isPending && <ArrowPathIcon className="w-5 h-5 animate-spin text-gray-400" />}
             </button>
+          )}
+        </div>
+
+        {/* SCORM Export Section */}
+        <div className="pt-4 border-t">
+          <button
+            onClick={() => setShowScormOptions(!showScormOptions)}
+            className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all"
+          >
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <AcademicCapIcon className="w-6 h-6 text-indigo-600" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-medium text-gray-900">Export SCORM (e-Learning)</p>
+              <p className="text-sm text-gray-500">Package compatible LMS (Moodle, 360Learning...)</p>
+            </div>
+            <ChevronDownIcon className={clsx(
+              'w-5 h-5 text-gray-400 transition-transform',
+              showScormOptions && 'rotate-180'
+            )} />
+          </button>
+
+          {showScormOptions && (
+            <div className="mt-3 p-4 bg-gray-50 rounded-lg space-y-4">
+              {/* Validation Status */}
+              {loadingScormValidation ? (
+                <div className="flex items-center justify-center py-3">
+                  <ArrowPathIcon className="w-5 h-5 animate-spin text-gray-400" />
+                  <span className="ml-2 text-sm text-gray-500">Verification en cours...</span>
+                </div>
+              ) : scormStatus ? (
+                <>
+                  {/* Validation Result */}
+                  {scormStatus.valid ? (
+                    <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg">
+                      <CheckIcon className="w-5 h-5 text-green-600" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-green-800">Pret pour l'export SCORM</p>
+                        <p className="text-xs text-green-600">
+                          {scormStatus.summary?.questionsCount} questions | {scormStatus.summary?.objectivesCount} objectifs
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-red-50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <ExclamationTriangleIcon className="w-5 h-5 text-red-600" />
+                        <p className="text-sm font-medium text-red-800">Corrections requises</p>
+                      </div>
+                      <ul className="text-xs text-red-600 space-y-1 ml-7">
+                        {scormStatus.errors?.map((err: string, i: number) => (
+                          <li key={i}>{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Warnings */}
+                  {scormStatus.warnings?.length > 0 && (
+                    <div className="p-3 bg-amber-50 rounded-lg">
+                      <p className="text-xs font-medium text-amber-800 mb-1">Recommandations:</p>
+                      <ul className="text-xs text-amber-600 space-y-1 ml-4 list-disc">
+                        {scormStatus.warnings.map((warn: string, i: number) => (
+                          <li key={i}>{warn}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Version Selection */}
+                  {scormStatus.valid && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Version SCORM
+                        </label>
+                        <select
+                          value={scormVersion}
+                          onChange={(e) => setScormVersion(e.target.value as ScormVersion)}
+                          className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                          <option value="1.2">SCORM 1.2 (compatibilite maximale)</option>
+                          <option value="2004-3rd">SCORM 2004 3rd Edition</option>
+                          <option value="2004-4th">SCORM 2004 4th Edition</option>
+                        </select>
+                      </div>
+
+                      {/* Export Button */}
+                      <button
+                        onClick={() => exportScorm.mutate()}
+                        disabled={exportScorm.isPending}
+                        className="w-full btn-primary flex items-center justify-center gap-2"
+                      >
+                        {exportScorm.isPending ? (
+                          <>
+                            <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                            Generation en cours...
+                          </>
+                        ) : (
+                          <>
+                            <AcademicCapIcon className="w-4 h-4" />
+                            Telecharger le package SCORM
+                          </>
+                        )}
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-3">
+                  <p className="text-sm text-gray-500">Cliquez pour verifier la compatibilite SCORM</p>
+                  <button
+                    onClick={() => validateScorm()}
+                    className="mt-2 btn-secondary text-sm"
+                  >
+                    Verifier
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
