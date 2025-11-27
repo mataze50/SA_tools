@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { notifyValidationResult } from '../services/notification.js';
 
 export const dashboardRouter = Router();
 
@@ -282,7 +283,8 @@ dashboardRouter.post('/validate/:sheetId', authenticate, async (req: AuthRequest
     const { status, comments } = schema.parse(req.body);
 
     const sheet = await prisma.sheet.findUnique({
-      where: { id: req.params.sheetId }
+      where: { id: req.params.sheetId },
+      include: { user: true }
     });
 
     if (!sheet) {
@@ -292,6 +294,13 @@ dashboardRouter.post('/validate/:sheetId', authenticate, async (req: AuthRequest
     if (sheet.status !== 'PENDING_VALIDATION') {
       throw new AppError('Sheet is not pending validation', 400);
     }
+
+    // Get validator info for notification
+    const validator = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { firstName: true, lastName: true }
+    });
+    const validatorName = validator ? `${validator.firstName} ${validator.lastName}` : 'Un manager';
 
     // Create validation record
     await prisma.sheetValidation.create({
@@ -312,6 +321,16 @@ dashboardRouter.post('/validate/:sheetId', authenticate, async (req: AuthRequest
         ...(status === 'APPROVED' && { validatedAt: new Date() })
       }
     });
+
+    // Notify the sheet author
+    await notifyValidationResult(
+      sheet.userId,
+      sheet.id,
+      sheet.title,
+      validatorName,
+      status,
+      comments
+    );
 
     res.json({
       success: true,

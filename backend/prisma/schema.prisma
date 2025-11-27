@@ -32,6 +32,7 @@ model User {
   feedbacks     SheetFeedback[]
   validations   SheetValidation[]  @relation("ValidatedBy")
   templates     Template[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -289,4 +290,34 @@ enum GenerationStatus {
   IMPROVING
   COMPLETED
   FAILED
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id          String           @id @default(uuid())
+  type        NotificationType
+  title       String
+  message     String
+  data        Json?            // Additional context (sheetId, etc.)
+  isRead      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  // Relations
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  VALIDATION_REQUESTED    // Sheet submitted for validation
+  VALIDATION_APPROVED     // Sheet approved by manager
+  VALIDATION_REJECTED     // Sheet rejected by manager
+  VALIDATION_NEEDS_CHANGES // Sheet needs modifications
+  SHEET_REMIXED           // Your sheet was remixed
+  COMMENT_ADDED           // New comment on your sheet
 }

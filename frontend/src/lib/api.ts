@@ -178,4 +178,26 @@ export const remixApi = {
   status: (sessionId: string) => api.get(`/remix/${sessionId}/status`)
 }
 
+// Notifications
+export const notificationsApi = {
+  list: (params?: { unreadOnly?: boolean; limit?: number }) =>
+    api.get('/notifications', { params }),
+
+  count: () => api.get('/notifications/count'),
+
+  markRead: (id: string) => api.post(`/notifications/${id}/read`),
+
+  markAllRead: () => api.post('/notifications/read-all')
+}
+
+// Manager Dashboard
+export const managerApi = {
+  pendingValidations: () => dashboardApi.pendingValidations(),
+
+  validate: (sheetId: string, data: { status: 'APPROVED' | 'REJECTED' | 'NEEDS_CHANGES'; comments?: string }) =>
+    dashboardApi.validate(sheetId, data),
+
+  stats: () => api.get('/dashboard/manager-stats')
+}
+
 export default api

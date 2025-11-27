@@ -10,6 +10,7 @@ import Generation from './pages/Generation'
 import ReviewWizard from './pages/ReviewWizard'
 import ConversationalCreate from './pages/ConversationalCreate'
 import RemixSheet from './pages/RemixSheet'
+import ManagerDashboard from './pages/ManagerDashboard'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="sheet/:id" element={<EditSheet />} />
         <Route path="sheet/:sheetId/review" element={<ReviewWizard />} />
         <Route path="sheet/:sourceId/remix" element={<RemixSheet />} />
+        <Route path="manager" element={<ManagerDashboard />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

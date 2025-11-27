@@ -5,13 +5,19 @@ import {
   DocumentTextIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
-  UserCircleIcon
+  UserCircleIcon,
+  ClipboardDocumentCheckIcon
 } from '@heroicons/react/24/outline'
+import NotificationsDropdown from './NotificationsDropdown'
 import clsx from 'clsx'
 
 const navigation = [
   { name: 'Accueil', href: '/', icon: HomeIcon },
   { name: 'Mes fiches', href: '/dashboard', icon: DocumentTextIcon }
+]
+
+const managerNav = [
+  { name: 'Validations', href: '/manager', icon: ClipboardDocumentCheckIcon }
 ]
 
 export default function Layout() {
@@ -56,15 +62,48 @@ export default function Layout() {
                   </Link>
                 )
               })}
+              {/* Manager navigation */}
+              {(user?.role === 'MANAGER' || user?.role === 'ADMIN') && (
+                <>
+                  <div className="w-px h-6 bg-gray-200 mx-2" />
+                  {managerNav.map((item) => {
+                    const isActive = location.pathname === item.href
+                    return (
+                      <Link
+                        key={item.name}
+                        to={item.href}
+                        className={clsx(
+                          'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                          isActive
+                            ? 'bg-purple-50 text-purple-700'
+                            : 'text-purple-600 hover:bg-purple-50'
+                        )}
+                      >
+                        <item.icon className="w-5 h-5" />
+                        {item.name}
+                      </Link>
+                    )
+                  })}
+                </>
+              )}
             </nav>
 
             {/* User menu */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              {/* Notifications */}
+              <NotificationsDropdown />
+
+              {/* User info */}
+              <div className="flex items-center gap-2 text-sm text-gray-600 ml-2">
                 <UserCircleIcon className="w-6 h-6" />
                 <span className="hidden sm:inline">
                   {user?.firstName} {user?.lastName}
                 </span>
+                {(user?.role === 'MANAGER' || user?.role === 'ADMIN') && (
+                  <span className="px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
+                    {user?.role === 'ADMIN' ? 'Admin' : 'Manager'}
+                  </span>
+                )}
               </div>
               <button
                 onClick={handleLogout}

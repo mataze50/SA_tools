@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { notifyValidationRequested } from '../services/notification.js';
 
 export const sheetsRouter = Router();
 
@@ -323,10 +324,20 @@ sheetsRouter.post('/:id/submit-validation', authenticate, async (req: AuthReques
       throw new AppError('Only draft sheets can be submitted for validation', 400);
     }
 
+    // Get author info for notification
+    const author = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { firstName: true, lastName: true }
+    });
+    const authorName = author ? `${author.firstName} ${author.lastName}` : 'Un consultant';
+
     const updated = await prisma.sheet.update({
       where: { id: req.params.id },
       data: { status: 'PENDING_VALIDATION' }
     });
+
+    // Notify all managers
+    await notifyValidationRequested(sheet.id, sheet.title, authorName);
 
     res.json({
       success: true,
