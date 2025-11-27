@@ -29,6 +29,7 @@ model User {
 
   // Relations
   sheets        Sheet[]
+  workshops     Workshop[]
   feedbacks     SheetFeedback[]
   validations   SheetValidation[]  @relation("ValidatedBy")
   templates     Template[]
@@ -67,8 +68,84 @@ model Competency {
 
   // Relations
   sheets      Sheet[]
+  workshops   WorkshopCompetency[]
 
   @@map("competencies")
+}
+
+// ============================================
+// WORKSHOP (ATELIER COMPLET) - Sprint 16
+// ============================================
+
+model Workshop {
+  id              String         @id @default(uuid())
+  title           String         // Free subject/theme of the workshop
+  description     String?        // Brief description
+  status          WorkshopStatus @default(DRAFT)
+  confidenceScore Int            @default(0)  // 0-100
+  version         Int            @default(1)
+
+  // Context
+  sector          String
+  audienceType    String
+  format          SheetFormat    @default(IN_PERSON)
+  duration        Int            @default(120) // Total duration in minutes
+  participantMin  Int            @default(6)
+  participantMax  Int            @default(12)
+
+  // Content (stored as JSON)
+  introduction    Json?          // Welcome, ice-breaker, objectives presentation
+  timeline        Json?          // Overall workshop timeline/schedule
+  activities      Json?          // Array of workshop activities/sequences
+  materials       Json?          // Required materials list
+  trainerNotes    Json?          // Tips and guidance for trainer
+  evaluation      Json?          // Global evaluation strategy
+  synthesis       Json?          // Conclusion and key takeaways
+
+  // AI Metadata
+  aiGenerationId  String?
+  aiModel         String?
+  perplexityCalls Int            @default(0)
+  claudeCalls     Int            @default(0)
+  totalCost       Float          @default(0)
+
+  // Timestamps
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  validatedAt     DateTime?
+
+  // Relations
+  userId          String
+  user            User           @relation(fields: [userId], references: [id])
+  competencies    WorkshopCompetency[]
+  sheets          Sheet[]        // Individual activity sheets within workshop
+
+  @@index([userId])
+  @@index([status])
+  @@map("workshops")
+}
+
+// Junction table for Workshop <-> Competency (many-to-many)
+model WorkshopCompetency {
+  id           String     @id @default(uuid())
+  workshopId   String
+  competencyId String
+  isPrimary    Boolean    @default(false) // Main competency vs secondary
+  coverageLevel Int       @default(50)    // 0-100 how much this competency is covered
+
+  workshop     Workshop   @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  competency   Competency @relation(fields: [competencyId], references: [id])
+
+  @@unique([workshopId, competencyId])
+  @@map("workshop_competencies")
+}
+
+enum WorkshopStatus {
+  DRAFT
+  GENERATING
+  PENDING_REVIEW
+  VALIDATED
+  ARCHIVED
 }
 
 // ============================================
@@ -120,6 +197,8 @@ model Sheet {
   user            User        @relation(fields: [userId], references: [id])
   competencyId    String
   competency      Competency  @relation(fields: [competencyId], references: [id])
+  workshopId      String?     // Optional: if this sheet is part of a workshop
+  workshop        Workshop?   @relation(fields: [workshopId], references: [id])
   validations     SheetValidation[]
   feedbacks       SheetFeedback[]
   versions        SheetVersion[]
@@ -127,6 +206,7 @@ model Sheet {
 
   @@index([userId])
   @@index([competencyId])
+  @@index([workshopId])
   @@index([status])
   @@map("sheets")
 }
@@ -293,6 +373,60 @@ enum GenerationStatus {
   GENERATING
   VALIDATING
   IMPROVING
+  COMPLETED
+  FAILED
+}
+
+// ============================================
+// WORKSHOP GENERATION SESSIONS - Sprint 16
+// ============================================
+
+model WorkshopGenerationSession {
+  id                String                    @id @default(uuid())
+  status            WorkshopGenerationStatus
+
+  // Input
+  subject           String                    // Free text workshop subject
+  competencyIds     String[]                  // Array of competency IDs
+  inputContext      Json                      // Full user input
+
+  // Intermediate results
+  structureData     Json?                     // Workshop structure planning
+  activitiesData    Json?                     // Generated activities
+  enrichmentData    Json?                     // Perplexity context
+  validationResult  Json?                     // Validation analysis
+
+  // Final output
+  finalContent      Json?                     // Complete workshop content
+
+  // Metrics
+  totalDuration     Int?                      // Total time in ms
+  perplexityCalls   Int                       @default(0)
+  claudeCalls       Int                       @default(0)
+  totalTokensIn     Int                       @default(0)
+  totalTokensOut    Int                       @default(0)
+  estimatedCost     Float                     @default(0)
+
+  // Timestamps
+  startedAt         DateTime                  @default(now())
+  completedAt       DateTime?
+
+  // Relations
+  userId            String
+
+  @@index([userId])
+  @@map("workshop_generation_sessions")
+}
+
+enum WorkshopGenerationStatus {
+  PENDING
+  ANALYZING           // Analyzing subject + competencies
+  STRUCTURING         // Creating workshop structure
+  GENERATING_INTRO    // Generating introduction
+  GENERATING_ACTIVITIES // Generating each activity
+  GENERATING_EVALUATION // Generating evaluation
+  VALIDATING          // AI validation
+  IMPROVING           // Auto-improvements
   COMPLETED
   FAILED
 }

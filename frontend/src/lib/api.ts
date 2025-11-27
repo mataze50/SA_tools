@@ -289,4 +289,56 @@ export const analyticsApi = {
   export: () => api.get('/analytics/export')
 }
 
+// Workshops (Sprint 16 - Ateliers complets)
+export const workshopsApi = {
+  list: (params?: { status?: string; limit?: number; offset?: number }) =>
+    api.get('/workshops', { params }),
+
+  recent: () => api.get('/workshops/recent'),
+
+  get: (id: string) => api.get(`/workshops/${id}`),
+
+  create: (data: {
+    title: string
+    description?: string
+    sector: string
+    audienceType: string
+    format?: string
+    duration?: number
+    participantMin?: number
+    participantMax?: number
+    competencyIds: string[]
+  }) => api.post('/workshops', data),
+
+  update: (id: string, data: any) => api.patch(`/workshops/${id}`, data),
+
+  updateContent: (id: string, section: string, content: any) =>
+    api.patch(`/workshops/${id}/content`, { section, content }),
+
+  delete: (id: string) => api.delete(`/workshops/${id}`),
+
+  duplicate: (id: string) => api.post(`/workshops/${id}/duplicate`)
+}
+
+// Workshop Generation (Sprint 16)
+export const workshopGenerationApi = {
+  start: (data: {
+    subject: string
+    competencyIds: string[]
+    sector: string
+    audienceType: string
+    format?: string
+    duration?: number
+    participantMin?: number
+    participantMax?: number
+  }) => api.post('/workshop-generation/start', data),
+
+  status: (sessionId: string) => api.get(`/workshop-generation/${sessionId}/status`),
+
+  stream: (sessionId: string) => `/api/workshop-generation/${sessionId}/stream`,
+
+  createWorkshop: (sessionId: string, title?: string) =>
+    api.post(`/workshop-generation/${sessionId}/create-workshop`, { title })
+}
+
 export default api

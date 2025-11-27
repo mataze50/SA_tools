@@ -7,7 +7,8 @@ import {
   ArrowPathIcon,
   DocumentTextIcon,
   ClockIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  RectangleGroupIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -54,22 +55,41 @@ export default function Home() {
       </div>
 
       {/* Action cards */}
-      <div className="grid md:grid-cols-3 gap-6">
-        {/* Create new */}
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Create workshop */}
+        <button
+          onClick={() => navigate('/workshops/new')}
+          className="card hover:shadow-md hover:border-purple-300 transition-all text-left group"
+        >
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-purple-100 dark:bg-purple-900/50 rounded-xl group-hover:bg-purple-200 dark:group-hover:bg-purple-900/70 transition-colors">
+              <RectangleGroupIcon className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Creer un atelier complet</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Guide d'animation multi-competences
+              </p>
+              <p className="text-xs text-purple-600 dark:text-purple-400 mt-2 font-medium">NOUVEAU</p>
+            </div>
+          </div>
+        </button>
+
+        {/* Create sheet */}
         <button
           onClick={() => navigate('/create')}
           className="card hover:shadow-md hover:border-primary-300 transition-all text-left group"
         >
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-primary-100 rounded-xl group-hover:bg-primary-200 transition-colors">
-              <SparklesIcon className="w-6 h-6 text-primary-600" />
+            <div className="p-3 bg-primary-100 dark:bg-primary-900/50 rounded-xl group-hover:bg-primary-200 dark:group-hover:bg-primary-900/70 transition-colors">
+              <SparklesIcon className="w-6 h-6 text-primary-600 dark:text-primary-400" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Créer une nouvelle fiche</h3>
-              <p className="text-sm text-gray-500 mt-1">
-                L'IA t'accompagne pour créer une fiche complète
+              <h3 className="font-semibold text-gray-900 dark:text-white">Creer une fiche</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Fiche pedagogique mono-competence
               </p>
-              <p className="text-xs text-primary-600 mt-2">~30-45 minutes</p>
+              <p className="text-xs text-primary-600 dark:text-primary-400 mt-2">~30-45 minutes</p>
             </div>
           </div>
         </button>
