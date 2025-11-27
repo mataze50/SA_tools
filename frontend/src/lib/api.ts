@@ -233,4 +233,21 @@ export const templatesApi = {
   delete: (id: string) => api.delete(`/templates/${id}`)
 }
 
+// Analytics
+export const analyticsApi = {
+  overview: () => api.get('/analytics/overview'),
+
+  activity: (period?: string) => api.get('/analytics/activity', { params: { period } }),
+
+  competencies: () => api.get('/analytics/competencies'),
+
+  formats: () => api.get('/analytics/formats'),
+
+  quality: () => api.get('/analytics/quality'),
+
+  team: () => api.get('/analytics/team'),
+
+  export: () => api.get('/analytics/export')
+}
+
 export default api

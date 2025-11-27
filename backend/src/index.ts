@@ -18,6 +18,7 @@ import { remixRouter } from './routes/remix.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { feedbackRouter } from './routes/feedback.js';
 import { templatesRouter } from './routes/templates.js';
+import { analyticsRouter } from './routes/analytics.js';
 
 dotenv.config();
 
@@ -52,6 +53,7 @@ app.use('/api/remix', remixRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/feedback', feedbackRouter);
 app.use('/api/templates', templatesRouter);
+app.use('/api/analytics', analyticsRouter);
 
 // Error handling
 app.use(errorHandler);
