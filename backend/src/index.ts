@@ -16,6 +16,7 @@ import { validationRouter } from './routes/validation.js';
 import { conversationRouter } from './routes/conversation.js';
 import { remixRouter } from './routes/remix.js';
 import { notificationsRouter } from './routes/notifications.js';
+import { feedbackRouter } from './routes/feedback.js';
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ app.use('/api/validation', validationRouter);
 app.use('/api/conversation', conversationRouter);
 app.use('/api/remix', remixRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/feedback', feedbackRouter);
 
 // Error handling
 app.use(errorHandler);

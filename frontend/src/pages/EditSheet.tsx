@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { sheetsApi, exportApi, quizApi, generationApi } from '../lib/api'
+import { sheetsApi, exportApi, quizApi, generationApi, feedbackApi } from '../lib/api'
+import FeedbackSummary from '../components/FeedbackSummary'
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -13,7 +14,8 @@ import {
   ChevronLeftIcon,
   PlusIcon,
   SparklesIcon,
-  XMarkIcon
+  XMarkIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -22,7 +24,8 @@ const tabs = [
   { id: 'objectives', label: 'Objectifs', icon: '🎯' },
   { id: 'situations', label: 'Situations', icon: '💼' },
   { id: 'flow', label: 'Déroulé', icon: '⏱️' },
-  { id: 'evaluation', label: 'Évaluation', icon: '✅' }
+  { id: 'evaluation', label: 'Évaluation', icon: '✅' },
+  { id: 'feedback', label: 'Retours', icon: '💬' }
 ]
 
 export default function EditSheet() {
@@ -111,6 +114,30 @@ export default function EditSheet() {
     },
     onError: () => {
       toast.error('Erreur lors de la régénération')
+    }
+  })
+
+  // Fetch feedbacks
+  const { data: feedbacksData } = useQuery({
+    queryKey: ['feedbacks', id],
+    queryFn: () => feedbackApi.list(id!),
+    enabled: !!id
+  })
+
+  const feedbacks = feedbacksData?.data?.data || []
+
+  // AI suggestions state
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
+
+  // Generate AI suggestions from feedbacks
+  const generateSuggestions = useMutation({
+    mutationFn: () => feedbackApi.aiSuggestions(id!),
+    onSuccess: (res) => {
+      setAiSuggestions(res.data.data.suggestions)
+      toast.success('Suggestions générées !')
+    },
+    onError: () => {
+      toast.error('Il faut au moins 2 retours pour générer des suggestions')
     }
   })
 
@@ -794,6 +821,34 @@ export default function EditSheet() {
                   )}
                 </>
               )}
+            </div>
+          )}
+
+          {/* Feedback tab */}
+          {activeTab === 'feedback' && (
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="font-medium text-gray-900 flex items-center gap-2">
+                  <ChatBubbleLeftRightIcon className="w-5 h-5 text-primary-500" />
+                  Retours d'ateliers
+                </h3>
+                <Link
+                  to={`/sheet/${id}/feedback`}
+                  className="btn-primary text-sm"
+                >
+                  <PlusIcon className="w-4 h-4 mr-1" />
+                  Ajouter un retour
+                </Link>
+              </div>
+
+              <FeedbackSummary
+                sheetId={id!}
+                feedbacks={feedbacks}
+                situations={situations}
+                aiSuggestions={aiSuggestions}
+                onGenerateSuggestions={() => generateSuggestions.mutate()}
+                isGeneratingSuggestions={generateSuggestions.isPending}
+              />
             </div>
           )}
         </div>

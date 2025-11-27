@@ -200,4 +200,15 @@ export const managerApi = {
   stats: () => api.get('/dashboard/manager-stats')
 }
 
+// Feedback
+export const feedbackApi = {
+  list: (sheetId: string) => api.get(`/feedback/${sheetId}`),
+
+  summary: (sheetId: string) => api.get(`/feedback/${sheetId}/summary`),
+
+  aiSuggestions: (sheetId: string) => api.post(`/feedback/${sheetId}/ai-suggestions`),
+
+  delete: (feedbackId: string) => api.delete(`/feedback/${feedbackId}`)
+}
+
 export default api
