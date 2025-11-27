@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/auth'
 import {
@@ -8,7 +9,8 @@ import {
   UserCircleIcon,
   ClipboardDocumentCheckIcon,
   DocumentDuplicateIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  MagnifyingGlassIcon
 } from '@heroicons/react/24/outline'
 import NotificationsDropdown from './NotificationsDropdown'
 import clsx from 'clsx'
@@ -17,7 +19,8 @@ const navigation = [
   { name: 'Accueil', href: '/', icon: HomeIcon },
   { name: 'Mes fiches', href: '/dashboard', icon: DocumentTextIcon },
   { name: 'Templates', href: '/templates', icon: DocumentDuplicateIcon },
-  { name: 'Analytique', href: '/analytics', icon: ChartBarIcon }
+  { name: 'Analytique', href: '/analytics', icon: ChartBarIcon },
+  { name: 'Recherche', href: '/search', icon: MagnifyingGlassIcon }
 ]
 
 const managerNav = [
@@ -33,6 +36,18 @@ export default function Layout() {
     logout()
     navigate('/login')
   }
+
+  // Keyboard shortcut for search (Cmd/Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        navigate('/search')
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [navigate])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -94,6 +109,19 @@ export default function Layout() {
 
             {/* User menu */}
             <div className="flex items-center gap-2">
+              {/* Quick Search Button */}
+              <button
+                onClick={() => navigate('/search')}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                title="Recherche rapide (Ctrl+K)"
+              >
+                <MagnifyingGlassIcon className="w-4 h-4" />
+                <span className="hidden lg:inline">Recherche</span>
+                <kbd className="hidden lg:inline px-1.5 py-0.5 text-xs bg-white border border-gray-300 rounded">
+                  K
+                </kbd>
+              </button>
+
               {/* Notifications */}
               <NotificationsDropdown />
 

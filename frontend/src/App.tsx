@@ -14,6 +14,7 @@ import ManagerDashboard from './pages/ManagerDashboard'
 import SheetFeedback from './pages/SheetFeedback'
 import TemplatesLibrary from './pages/TemplatesLibrary'
 import Analytics from './pages/Analytics'
+import SearchPage from './pages/SearchPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="sheet/:sheetId/feedback" element={<SheetFeedback />} />
         <Route path="templates" element={<TemplatesLibrary />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="search" element={<SearchPage />} />
         <Route path="manager" element={<ManagerDashboard />} />
       </Route>
 
