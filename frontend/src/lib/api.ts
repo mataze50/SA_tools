@@ -76,7 +76,17 @@ export const sheetsApi = {
 
   submitValidation: (id: string) => api.post(`/sheets/${id}/submit-validation`),
 
-  versions: (id: string) => api.get(`/sheets/${id}/versions`)
+  // Version History (Sprint 9)
+  versions: (id: string) => api.get(`/sheets/${id}/versions`),
+
+  getVersion: (id: string, versionNum: number) =>
+    api.get(`/sheets/${id}/versions/${versionNum}`),
+
+  restoreVersion: (id: string, versionNum: number) =>
+    api.post(`/sheets/${id}/versions/${versionNum}/restore`),
+
+  compareVersions: (id: string, v1: number, v2: number) =>
+    api.get(`/sheets/${id}/versions/compare`, { params: { v1, v2 } })
 }
 
 // Generation

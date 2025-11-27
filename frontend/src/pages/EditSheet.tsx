@@ -6,6 +6,7 @@ import { sheetsApi, exportApi, quizApi, generationApi, feedbackApi } from '../li
 import FeedbackSummary from '../components/FeedbackSummary'
 import SaveAsTemplateModal from '../components/SaveAsTemplateModal'
 import ExportOptionsModal from '../components/ExportOptionsModal'
+import VersionHistoryPanel from '../components/VersionHistoryPanel'
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -19,7 +20,8 @@ import {
   XMarkIcon,
   ChatBubbleLeftRightIcon,
   DocumentDuplicateIcon,
-  ShareIcon
+  ShareIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -43,6 +45,7 @@ export default function EditSheet() {
   const [regenerateInstructions, setRegenerateInstructions] = useState('')
   const [showTemplateModal, setShowTemplateModal] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
+  const [showVersionHistory, setShowVersionHistory] = useState(false)
 
   // Fetch sheet
   const { data: sheetData, isLoading } = useQuery({
@@ -887,6 +890,14 @@ export default function EditSheet() {
             Sauver comme modele
           </button>
 
+          <button
+            onClick={() => setShowVersionHistory(true)}
+            className="btn-secondary"
+          >
+            <ClockIcon className="w-5 h-5 mr-2" />
+            Historique (v{sheet.version})
+          </button>
+
           {sheet.status === 'DRAFT' && (
             <button
               onClick={() => submitValidation.mutate()}
@@ -975,6 +986,17 @@ export default function EditSheet() {
         hasQuiz={!!sheet.quiz}
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
+      />
+
+      {/* Version History Panel */}
+      <VersionHistoryPanel
+        sheetId={id!}
+        currentVersion={sheet.version}
+        isOpen={showVersionHistory}
+        onClose={() => setShowVersionHistory(false)}
+        onRestore={() => {
+          queryClient.invalidateQueries({ queryKey: ['sheet', id] })
+        }}
       />
     </div>
   )
