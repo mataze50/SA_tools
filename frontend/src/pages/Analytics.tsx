@@ -13,7 +13,11 @@ import {
   ChartBarIcon,
   ArrowDownTrayIcon,
   UsersIcon,
-  CalendarIcon
+  CalendarIcon,
+  CpuChipIcon,
+  CurrencyDollarIcon,
+  ClockIcon,
+  BoltIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -78,7 +82,13 @@ export default function Analytics() {
     enabled: isManager
   })
 
+  const { data: aiData } = useQuery({
+    queryKey: ['analytics-ai'],
+    queryFn: () => analyticsApi.ai()
+  })
+
   const overview = overviewData?.data?.data
+  const aiMetrics = aiData?.data?.data
   const activity = activityData?.data?.data?.activity || []
   const competencies = competenciesData?.data?.data
   const formats = formatsData?.data?.data
@@ -394,6 +404,124 @@ export default function Analytics() {
           </div>
         </div>
       </div>
+
+      {/* AI Generation Metrics */}
+      {aiMetrics && (
+        <div className="card">
+          <h2 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <CpuChipIcon className="w-5 h-5 text-purple-500" />
+            Metriques IA
+          </h2>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="p-4 bg-purple-50 dark:bg-purple-900/30 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <SparklesIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                <span className="text-sm text-purple-700 dark:text-purple-300">Generations</span>
+              </div>
+              <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                {aiMetrics.overview.totalGenerations}
+              </p>
+              <p className="text-xs text-purple-600 dark:text-purple-400">
+                {aiMetrics.overview.generationsThisMonth} ce mois
+              </p>
+            </div>
+
+            <div className="p-4 bg-green-50 dark:bg-green-900/30 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <BoltIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <span className="text-sm text-green-700 dark:text-green-300">Taux de succes</span>
+              </div>
+              <p className="text-2xl font-bold text-green-900 dark:text-green-100">
+                {aiMetrics.overview.successRate}%
+              </p>
+            </div>
+
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <ClockIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm text-blue-700 dark:text-blue-300">Temps moyen</span>
+              </div>
+              <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                {aiMetrics.overview.avgGenerationTime}s
+              </p>
+            </div>
+
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/30 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <CurrencyDollarIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                <span className="text-sm text-amber-700 dark:text-amber-300">Cout total</span>
+              </div>
+              <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">
+                ${aiMetrics.costs.totalCost}
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                ${aiMetrics.costs.costThisMonth} ce mois
+              </p>
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* API Calls Breakdown */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Appels API</p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-orange-500" />
+                    <span className="text-sm text-gray-600 dark:text-gray-300">Claude API</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium text-gray-900 dark:text-white">{aiMetrics.overview.totalClaudeCalls}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">~${aiMetrics.costs.estimatedClaudeCost}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-blue-500" />
+                    <span className="text-sm text-gray-600 dark:text-gray-300">Perplexity API</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium text-gray-900 dark:text-white">{aiMetrics.overview.totalPerplexityCalls}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">~${aiMetrics.costs.estimatedPerplexityCost}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Generation Status Distribution */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Statut des generations</p>
+              <div className="space-y-2">
+                {aiMetrics.statusDistribution.map((item: any) => {
+                  const total = aiMetrics.overview.totalGenerations || 1
+                  const percentage = Math.round((item.count / total) * 100)
+                  return (
+                    <div key={item.status}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-gray-600 dark:text-gray-300">{item.status}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{item.count}</span>
+                      </div>
+                      <div className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className={clsx(
+                            'h-full rounded-full',
+                            item.status === 'COMPLETED' ? 'bg-green-500' :
+                            item.status === 'FAILED' ? 'bg-red-500' :
+                            item.status === 'PENDING' ? 'bg-yellow-500' :
+                            'bg-blue-500'
+                          )}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Team Performance (Managers only) */}
       {isManager && team.length > 0 && (

@@ -1,5 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import PDFDocument from 'pdfkit';
 import {
   Document,
   Paragraph,
@@ -48,6 +49,38 @@ exportRouter.get('/docx/:sheetId', authenticate, async (req: AuthRequest, res: R
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/pdf/:sheetId - Export sheet as PDF
+exportRouter.get('/pdf/:sheetId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const sheet = await prisma.sheet.findFirst({
+      where: {
+        id: req.params.sheetId,
+        userId: req.user!.id
+      },
+      include: {
+        competency: true,
+        user: {
+          select: { firstName: true, lastName: true }
+        }
+      }
+    });
+
+    if (!sheet) {
+      throw new AppError('Sheet not found', 404);
+    }
+
+    const pdfBuffer = await generatePdfDocument(sheet);
+    const filename = `fiche_${sheet.competency.code}_${Date.now()}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
   } catch (error) {
     next(error);
   }
@@ -1008,4 +1041,151 @@ function activityTypeLabel(type: string): string {
     practice: 'mise en pratique'
   };
   return labels[type] || type;
+}
+
+// ============================================
+// PDF GENERATOR
+// ============================================
+
+async function generatePdfDocument(sheet: any): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50,
+      info: {
+        Title: sheet.title,
+        Author: `${sheet.user.firstName} ${sheet.user.lastName}`,
+        Subject: `Fiche pedagogique - ${sheet.competency.code}`,
+        Creator: 'ATELIER FORGE v3.0'
+      }
+    });
+
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const objectives = sheet.objectives as any[];
+    const situations = sheet.situations as any[];
+    const flow = sheet.flow as any[];
+    const evaluation = sheet.evaluation as any;
+
+    // Colors
+    const primaryColor = '#1a365d';
+    const secondaryColor = '#2d3748';
+    const accentColor = '#3182ce';
+    const lightGray = '#f7fafc';
+
+    // Header
+    doc.fontSize(24).fillColor(primaryColor).text('FICHE DE CONCEPTION PEDAGOGIQUE', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(18).fillColor(secondaryColor).text(sheet.title, { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(12).fillColor('#718096').text(`${sheet.competency.code} - ${sheet.competency.title}`, { align: 'center' });
+    doc.moveDown(1);
+
+    // Metadata box
+    const metaY = doc.y;
+    doc.rect(50, metaY, 495, 60).fill(lightGray);
+    doc.fillColor(secondaryColor).fontSize(10);
+    doc.text(`Secteur: ${sheet.sector}`, 60, metaY + 10);
+    doc.text(`Public: ${sheet.audienceType}`, 60, metaY + 25);
+    doc.text(`Format: ${formatLabel(sheet.format)}`, 300, metaY + 10);
+    doc.text(`Duree: ${sheet.duration} min`, 300, metaY + 25);
+    doc.text(`Score: ${sheet.confidenceScore}%`, 300, metaY + 40);
+    doc.y = metaY + 70;
+
+    // Section: Objectives
+    addSectionHeader(doc, 'OBJECTIFS PEDAGOGIQUES', accentColor);
+    objectives.forEach((obj: any, i: number) => {
+      doc.fontSize(11).fillColor(secondaryColor);
+      doc.text(`${i + 1}. ${obj.text}`, { indent: 10 });
+      doc.fontSize(9).fillColor('#718096').text(`   Niveau Bloom: ${obj.bloomLevel}`, { indent: 15 });
+      doc.moveDown(0.3);
+    });
+    doc.moveDown(0.5);
+
+    // Section: Situations
+    addSectionHeader(doc, 'SITUATIONS PROFESSIONNELLES', accentColor);
+    situations.forEach((sit: any, i: number) => {
+      doc.fontSize(12).fillColor(primaryColor).text(`Situation ${i + 1}: ${sit.title}`);
+      doc.fontSize(10).fillColor(secondaryColor);
+      doc.text(`Description: ${sit.description}`, { indent: 10 });
+      doc.text(`Defi: ${sit.challenge}`, { indent: 10 });
+      doc.text(`Comportement attendu: ${sit.expectedBehavior}`, { indent: 10 });
+      doc.moveDown(0.5);
+    });
+
+    // Check if we need a new page
+    if (doc.y > 650) {
+      doc.addPage();
+    }
+
+    // Section: Flow
+    addSectionHeader(doc, 'DEROULE PEDAGOGIQUE', accentColor);
+    flow.forEach((phase: any) => {
+      doc.fontSize(12).fillColor(primaryColor).text(`${phase.name} (${phase.duration} min)`);
+
+      if (phase.activities?.length) {
+        phase.activities.forEach((act: any) => {
+          doc.fontSize(10).fillColor(secondaryColor);
+          doc.text(`• ${act.name} - ${act.duration} min (${activityTypeLabel(act.type)})`, { indent: 15 });
+          if (act.instructions) {
+            doc.fontSize(9).fillColor('#4a5568').text(act.instructions, { indent: 25 });
+          }
+        });
+      }
+
+      if (phase.materials?.length) {
+        doc.fontSize(9).fillColor('#718096').text(`Materiel: ${phase.materials.join(', ')}`, { indent: 15 });
+      }
+      doc.moveDown(0.5);
+
+      // Page break if needed
+      if (doc.y > 700) {
+        doc.addPage();
+      }
+    });
+
+    // Section: Evaluation
+    if (doc.y > 600) {
+      doc.addPage();
+    }
+    addSectionHeader(doc, 'EVALUATION', accentColor);
+
+    if (evaluation?.method) {
+      doc.fontSize(11).fillColor(secondaryColor).text(`Methode: ${evaluation.method}`);
+      doc.moveDown(0.3);
+    }
+
+    if (evaluation?.criteria?.length) {
+      doc.fontSize(11).fillColor(primaryColor).text('Criteres d\'evaluation:');
+      evaluation.criteria.forEach((c: any) => {
+        doc.fontSize(10).fillColor(secondaryColor).text(`• ${c.criterion}: ${c.observable}`, { indent: 10 });
+      });
+      doc.moveDown(0.3);
+    }
+
+    if (evaluation?.successIndicators?.length) {
+      doc.fontSize(11).fillColor(primaryColor).text('Indicateurs de reussite:');
+      evaluation.successIndicators.forEach((ind: string) => {
+        doc.fontSize(10).fillColor(secondaryColor).text(`• ${ind}`, { indent: 10 });
+      });
+    }
+
+    // Footer
+    doc.moveDown(2);
+    doc.fontSize(9).fillColor('#a0aec0');
+    doc.text(`Genere par ATELIER FORGE — ${new Date().toLocaleDateString('fr-FR')}`, { align: 'center' });
+    doc.text(`Auteur: ${sheet.user.firstName} ${sheet.user.lastName}`, { align: 'center' });
+
+    doc.end();
+  });
+}
+
+function addSectionHeader(doc: PDFKit.PDFDocument, title: string, color: string) {
+  doc.moveDown(0.5);
+  doc.fontSize(14).fillColor(color).text(title);
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke(color);
+  doc.moveDown(0.5);
 }

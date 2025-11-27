@@ -422,6 +422,134 @@ analyticsRouter.get('/team', authenticate, requireRole('MANAGER', 'ADMIN'), asyn
   }
 })
 
+// GET /analytics/ai - Get AI generation metrics
+analyticsRouter.get('/ai', authenticate, async (req, res) => {
+  try {
+    const userId = req.user!.id
+    const isManager = req.user!.role === 'MANAGER' || req.user!.role === 'ADMIN'
+
+    // Get date ranges
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+
+    // Total generation sessions
+    const totalSessions = await prisma.generationSession.count()
+
+    // Sessions this month
+    const sessionsThisMonth = await prisma.generationSession.count({
+      where: { createdAt: { gte: startOfMonth } }
+    })
+
+    // Sessions by status
+    const sessionsByStatus = await prisma.generationSession.groupBy({
+      by: ['status'],
+      _count: { id: true }
+    })
+
+    const completedSessions = sessionsByStatus.find(s => s.status === 'COMPLETED')?._count.id || 0
+    const failedSessions = sessionsByStatus.find(s => s.status === 'FAILED')?._count.id || 0
+    const successRate = totalSessions > 0
+      ? Math.round((completedSessions / totalSessions) * 100)
+      : 0
+
+    // API call totals from sheets
+    const apiCallStats = await prisma.sheet.aggregate({
+      _sum: {
+        claudeCalls: true,
+        perplexityCalls: true,
+        totalCost: true
+      }
+    })
+
+    // Average generation time (from completed sessions)
+    const completedSessionsData = await prisma.generationSession.findMany({
+      where: { status: 'COMPLETED', totalDuration: { not: null } },
+      select: { totalDuration: true }
+    })
+
+    const avgGenerationTime = completedSessionsData.length > 0
+      ? Math.round(completedSessionsData.reduce((sum, s) => sum + (s.totalDuration || 0), 0) / completedSessionsData.length / 1000)
+      : 0
+
+    // Generation activity over last 30 days
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const recentSessions = await prisma.generationSession.findMany({
+      where: { createdAt: { gte: thirtyDaysAgo } },
+      select: { createdAt: true, status: true }
+    })
+
+    const generationActivity: Record<string, { total: number; success: number }> = {}
+    recentSessions.forEach(session => {
+      const dateKey = session.createdAt.toISOString().split('T')[0]
+      if (!generationActivity[dateKey]) {
+        generationActivity[dateKey] = { total: 0, success: 0 }
+      }
+      generationActivity[dateKey].total++
+      if (session.status === 'COMPLETED') {
+        generationActivity[dateKey].success++
+      }
+    })
+
+    // Most regenerated sections
+    const regenerationStats = await prisma.sheet.aggregate({
+      _sum: { claudeCalls: true }
+    })
+
+    // Cost breakdown
+    const monthlyCost = await prisma.sheet.aggregate({
+      where: { createdAt: { gte: startOfMonth } },
+      _sum: { totalCost: true }
+    })
+
+    const lastMonthCost = await prisma.sheet.aggregate({
+      where: {
+        createdAt: {
+          gte: startOfLastMonth,
+          lt: startOfMonth
+        }
+      },
+      _sum: { totalCost: true }
+    })
+
+    res.json({
+      success: true,
+      data: {
+        overview: {
+          totalGenerations: totalSessions,
+          generationsThisMonth: sessionsThisMonth,
+          successRate,
+          avgGenerationTime, // in seconds
+          totalClaudeCalls: apiCallStats._sum.claudeCalls || 0,
+          totalPerplexityCalls: apiCallStats._sum.perplexityCalls || 0
+        },
+        costs: {
+          totalCost: Math.round((apiCallStats._sum.totalCost || 0) * 100) / 100,
+          costThisMonth: Math.round((monthlyCost._sum.totalCost || 0) * 100) / 100,
+          costLastMonth: Math.round((lastMonthCost._sum.totalCost || 0) * 100) / 100,
+          estimatedClaudeCost: Math.round((apiCallStats._sum.claudeCalls || 0) * 0.10 * 100) / 100,
+          estimatedPerplexityCost: Math.round((apiCallStats._sum.perplexityCalls || 0) * 0.02 * 100) / 100
+        },
+        statusDistribution: sessionsByStatus.map(s => ({
+          status: s.status,
+          count: s._count.id
+        })),
+        generationActivity: Object.entries(generationActivity)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, data]) => ({
+            date,
+            total: data.total,
+            success: data.success,
+            successRate: data.total > 0 ? Math.round((data.success / data.total) * 100) : 0
+          }))
+      }
+    })
+  } catch (error) {
+    console.error('Analytics AI error:', error)
+    res.status(500).json({ error: 'Failed to fetch AI analytics' })
+  }
+})
+
 // GET /analytics/export - Export analytics data as JSON
 analyticsRouter.get('/export', authenticate, async (req, res) => {
   try {

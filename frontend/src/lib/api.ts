@@ -127,6 +127,9 @@ export const exportApi = {
   docx: (sheetId: string) =>
     api.get(`/export/docx/${sheetId}`, { responseType: 'blob' }),
 
+  pdf: (sheetId: string) =>
+    api.get(`/export/pdf/${sheetId}`, { responseType: 'blob' }),
+
   json: (sheetId: string) => api.get(`/export/json/${sheetId}`),
 
   quiz: (sheetId: string) =>
@@ -280,6 +283,8 @@ export const analyticsApi = {
   quality: () => api.get('/analytics/quality'),
 
   team: () => api.get('/analytics/team'),
+
+  ai: () => api.get('/analytics/ai'),
 
   export: () => api.get('/analytics/export')
 }

@@ -17,7 +17,8 @@ import {
   GlobeAltIcon,
   AcademicCapIcon,
   ExclamationTriangleIcon,
-  ChevronDownIcon
+  ChevronDownIcon,
+  DocumentIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -76,6 +77,24 @@ export default function ExportOptionsModal({
     },
     onError: () => {
       toast.error("Erreur lors de l'export")
+    }
+  })
+
+  // Export PDF (native)
+  const exportPdf = useMutation({
+    mutationFn: () => exportApi.pdf(sheetId),
+    onSuccess: (res) => {
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `fiche_${sheetTitle.replace(/\s+/g, '_')}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      toast.success('Fichier PDF telecharge !')
+    },
+    onError: () => {
+      toast.error("Erreur lors de l'export PDF")
     }
   })
 
@@ -209,6 +228,21 @@ export default function ExportOptionsModal({
           </button>
 
           <button
+            onClick={() => exportPdf.mutate()}
+            disabled={exportPdf.isPending}
+            className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-primary-500 hover:bg-primary-50 transition-all"
+          >
+            <div className="p-2 bg-red-100 rounded-lg">
+              <DocumentIcon className="w-6 h-6 text-red-600" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-medium text-gray-900">Export PDF</p>
+              <p className="text-sm text-gray-500">Document PDF formaté professionnel</p>
+            </div>
+            {exportPdf.isPending && <ArrowPathIcon className="w-5 h-5 animate-spin text-gray-400" />}
+          </button>
+
+          <button
             onClick={openPrintView}
             className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-primary-500 hover:bg-primary-50 transition-all"
           >
@@ -216,8 +250,8 @@ export default function ExportOptionsModal({
               <PrinterIcon className="w-6 h-6 text-purple-600" />
             </div>
             <div className="text-left flex-1">
-              <p className="font-medium text-gray-900">Export PDF</p>
-              <p className="text-sm text-gray-500">Ouvre une page imprimable (Imprimer &gt; PDF)</p>
+              <p className="font-medium text-gray-900">Version imprimable</p>
+              <p className="text-sm text-gray-500">Ouvre une page HTML imprimable</p>
             </div>
           </button>
 

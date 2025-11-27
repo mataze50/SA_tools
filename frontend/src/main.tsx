@@ -4,7 +4,11 @@ import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import App from './App'
+import { initializeTheme } from './stores/theme'
 import './index.css'
+
+// Initialize theme before rendering to prevent flash
+initializeTheme()
 
 const queryClient = new QueryClient({
   defaultOptions: {
