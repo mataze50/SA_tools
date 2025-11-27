@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { generateSheet, validateSheet, improveSheet, GenerationContext } from '../services/ai/claude.js';
+import { generateSheet, validateSheet, improveSheet, regenerateSection, GenerationContext } from '../services/ai/claude.js';
 import { enrichContext } from '../services/ai/perplexity.js';
 
 export const generationRouter = Router();
@@ -89,6 +89,106 @@ generationRouter.get('/:sessionId/status', authenticate, async (req: AuthRequest
   }
 });
 
+// GET /api/generation/:sessionId/stream - SSE streaming for live updates
+// Note: Uses query param token because EventSource doesn't support headers
+generationRouter.get('/:sessionId/stream', async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    // Handle auth via query param for SSE (EventSource doesn't support headers)
+    const token = req.query.token as string;
+    if (!token) {
+      return res.status(401).json({ error: 'Token required' });
+    }
+
+    // Verify token
+    const jwt = await import('jsonwebtoken');
+    try {
+      const secret = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+      jwt.default.verify(token, secret);
+    } catch {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const sessionId = req.params.sessionId;
+
+    // Verify session exists
+    const session = await prisma.generationSession.findUnique({
+      where: { id: sessionId }
+    });
+
+    if (!session) {
+      throw new AppError('Session not found', 404);
+    }
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    // Send initial status
+    const sendUpdate = async () => {
+      const currentSession = await prisma.generationSession.findUnique({
+        where: { id: sessionId }
+      });
+
+      if (!currentSession) {
+        res.write(`data: ${JSON.stringify({ error: 'Session not found' })}\n\n`);
+        res.end();
+        return false;
+      }
+
+      const progress = getProgressInfo(currentSession.status);
+
+      const data = {
+        sessionId: currentSession.id,
+        status: currentSession.status,
+        progress,
+        estimatedTimeRemaining: progress.estimatedTimeRemaining,
+        enrichmentData: currentSession.enrichmentData,
+        generatedContent: currentSession.generatedContent,
+        validationResult: currentSession.validationResult,
+        finalContent: currentSession.status === 'COMPLETED' ? currentSession.finalContent : null
+      };
+
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+      // Return true if we should continue polling
+      return currentSession.status !== 'COMPLETED' && currentSession.status !== 'FAILED';
+    };
+
+    // Send initial update
+    const shouldContinue = await sendUpdate();
+
+    if (!shouldContinue) {
+      res.end();
+      return;
+    }
+
+    // Poll for updates every second
+    const intervalId = setInterval(async () => {
+      try {
+        const shouldContinue = await sendUpdate();
+        if (!shouldContinue) {
+          clearInterval(intervalId);
+          res.end();
+        }
+      } catch (error) {
+        console.error('SSE update error:', error);
+        clearInterval(intervalId);
+        res.end();
+      }
+    }, 1000);
+
+    // Clean up on client disconnect
+    req.on('close', () => {
+      clearInterval(intervalId);
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /api/generation/:sessionId/create-sheet - Create sheet from completed generation
 generationRouter.post('/:sessionId/create-sheet', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -168,14 +268,64 @@ generationRouter.post('/regenerate-section', authenticate, async (req: AuthReque
       throw new AppError('Sheet not found', 404);
     }
 
-    // TODO: Implement section-specific regeneration
-    // For now, return the existing section
+    // Build generation context from sheet
+    const context: GenerationContext = {
+      competencyCode: sheet.competency?.code || '',
+      competencyTitle: sheet.competency?.title || '',
+      sector: sheet.sector,
+      audienceType: sheet.audienceType,
+      format: sheet.format,
+      constraints: (sheet.constraints as string[]) || [],
+      priorities: (sheet.priorities as string[]) || [],
+      duration: sheet.duration
+    };
+
+    // Build current sheet structure for context
+    const currentSheet = {
+      title: sheet.title,
+      objectives: (sheet.objectives as any[]) || [],
+      situations: (sheet.situations as any[]) || [],
+      flow: (sheet.flow as any[]) || [],
+      evaluation: (sheet.evaluation as any) || {},
+      confidenceScore: sheet.confidenceScore
+    };
+
+    // Regenerate the section with AI
+    const regeneratedSection = await regenerateSection(
+      currentSheet,
+      section,
+      context,
+      instructions
+    );
+
+    // Update the sheet with regenerated section
+    const updateData: any = {};
+    if (section === 'objectives' && regeneratedSection.objectives) {
+      updateData.objectives = regeneratedSection.objectives;
+    } else if (section === 'situations' && regeneratedSection.situations) {
+      updateData.situations = regeneratedSection.situations;
+    } else if (section === 'flow' && regeneratedSection.flow) {
+      updateData.flow = regeneratedSection.flow;
+    } else if (section === 'evaluation' && regeneratedSection.evaluation) {
+      updateData.evaluation = regeneratedSection.evaluation;
+    }
+
+    // Save to database
+    const updatedSheet = await prisma.sheet.update({
+      where: { id: sheetId },
+      data: {
+        ...updateData,
+        claudeCalls: { increment: 1 }
+      },
+      include: { competency: true }
+    });
+
     res.json({
       success: true,
       data: {
         section,
-        content: (sheet as any)[section],
-        message: 'Section regeneration not yet implemented'
+        content: updateData[section] || regeneratedSection,
+        sheet: updatedSheet
       }
     });
   } catch (error) {

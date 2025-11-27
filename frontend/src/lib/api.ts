@@ -139,4 +139,16 @@ export const dashboardApi = {
     api.post(`/dashboard/validate/${sheetId}`, data)
 }
 
+// Validation
+export const validationApi = {
+  get: (sheetId: string) => api.get(`/validation/${sheetId}`),
+
+  apply: (sheetId: string, data: { suggestionId: string; action: 'accept' | 'modify' | 'ignore'; customValue?: string }) =>
+    api.post(`/validation/${sheetId}/apply`, data),
+
+  applyAll: (sheetId: string) => api.post(`/validation/${sheetId}/apply-all`),
+
+  revalidate: (sheetId: string) => api.post(`/validation/${sheetId}/revalidate`)
+}
+
 export default api

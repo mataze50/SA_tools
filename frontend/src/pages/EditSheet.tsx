@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { sheetsApi, exportApi, quizApi } from '../lib/api'
+import { sheetsApi, exportApi, quizApi, generationApi } from '../lib/api'
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -11,7 +11,9 @@ import {
   TrashIcon,
   DocumentArrowDownIcon,
   ChevronLeftIcon,
-  PlusIcon
+  PlusIcon,
+  SparklesIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -30,6 +32,8 @@ export default function EditSheet() {
   const [activeTab, setActiveTab] = useState('objectives')
   const [editingItem, setEditingItem] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [regenerateModal, setRegenerateModal] = useState<{ section: string; isOpen: boolean }>({ section: '', isOpen: false })
+  const [regenerateInstructions, setRegenerateInstructions] = useState('')
 
   // Fetch sheet
   const { data: sheetData, isLoading } = useQuery({
@@ -95,6 +99,35 @@ export default function EditSheet() {
     }
   })
 
+  // Regenerate section
+  const regenerateSection = useMutation({
+    mutationFn: ({ section, instructions }: { section: string; instructions?: string }) =>
+      generationApi.regenerateSection(id!, section, instructions),
+    onSuccess: (res, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['sheet', id] })
+      toast.success(`Section "${sectionLabel(variables.section)}" régénérée !`)
+      setRegenerateModal({ section: '', isOpen: false })
+      setRegenerateInstructions('')
+    },
+    onError: () => {
+      toast.error('Erreur lors de la régénération')
+    }
+  })
+
+  const handleRegenerate = () => {
+    if (regenerateModal.section) {
+      regenerateSection.mutate({
+        section: regenerateModal.section,
+        instructions: regenerateInstructions || undefined
+      })
+    }
+  }
+
+  const openRegenerateModal = (section: string) => {
+    setRegenerateModal({ section, isOpen: true })
+    setRegenerateInstructions('')
+  }
+
   if (isLoading || !sheet) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -123,6 +156,22 @@ export default function EditSheet() {
     const updated = [...situations]
     updated[index] = { ...updated[index], [field]: value }
     updateSheet.mutate({ situations: updated })
+  }
+
+  const handleSaveSituationFull = (index: number, data: any) => {
+    const updated = [...situations]
+    updated[index] = { ...updated[index], ...data }
+    updateSheet.mutate({ situations: updated })
+  }
+
+  const handleSavePhase = (index: number, data: any) => {
+    const updated = [...flow]
+    updated[index] = { ...updated[index], ...data }
+    updateSheet.mutate({ flow: updated })
+  }
+
+  const handleSaveEvaluation = (data: any) => {
+    updateSheet.mutate({ evaluation: { ...evaluation, ...data } })
   }
 
   return (
@@ -221,6 +270,17 @@ export default function EditSheet() {
           {/* Objectives tab */}
           {activeTab === 'objectives' && (
             <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-medium text-gray-900">Objectifs pédagogiques</h3>
+                <button
+                  onClick={() => openRegenerateModal('objectives')}
+                  disabled={regenerateSection.isPending}
+                  className="btn-secondary text-sm"
+                >
+                  <SparklesIcon className="w-4 h-4 mr-1" />
+                  Régénérer avec l'IA
+                </button>
+              </div>
               {objectives.map((obj, index) => (
                 <div
                   key={obj.id || index}
@@ -304,26 +364,139 @@ export default function EditSheet() {
           {/* Situations tab */}
           {activeTab === 'situations' && (
             <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-medium text-gray-900">Situations professionnelles</h3>
+                <button
+                  onClick={() => openRegenerateModal('situations')}
+                  disabled={regenerateSection.isPending}
+                  className="btn-secondary text-sm"
+                >
+                  <SparklesIcon className="w-4 h-4 mr-1" />
+                  Régénérer avec l'IA
+                </button>
+              </div>
               {situations.map((sit, index) => (
                 <div
                   key={sit.id || index}
                   className="p-4 border rounded-lg hover:border-gray-300 transition-colors"
                 >
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center justify-between gap-2 mb-2">
                     <span className="badge badge-info">Situation {index + 1}</span>
+                    {editingItem !== `sit-${index}` && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingItem(`sit-${index}`)
+                            setEditValue(JSON.stringify(sit))
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg"
+                          title="Modifier"
+                        >
+                          <PencilIcon className="w-4 h-4 text-gray-500" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            const updated = situations.filter((_, i) => i !== index)
+                            updateSheet.mutate({ situations: updated })
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg"
+                          title="Supprimer"
+                        >
+                          <TrashIcon className="w-4 h-4 text-gray-500" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <h3 className="font-semibold text-gray-900 mb-2">{sit.title}</h3>
-                  <p className="text-gray-600 text-sm mb-2">{sit.description}</p>
-                  <div className="grid md:grid-cols-2 gap-4 mt-4 text-sm">
-                    <div>
-                      <span className="font-medium text-gray-500">Défi : </span>
-                      <span className="text-gray-700">{sit.challenge}</span>
+
+                  {editingItem === `sit-${index}` ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="label">Titre</label>
+                        <input
+                          type="text"
+                          className="input"
+                          defaultValue={sit.title}
+                          onChange={(e) => {
+                            const data = JSON.parse(editValue)
+                            data.title = e.target.value
+                            setEditValue(JSON.stringify(data))
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Description</label>
+                        <textarea
+                          className="input"
+                          rows={2}
+                          defaultValue={sit.description}
+                          onChange={(e) => {
+                            const data = JSON.parse(editValue)
+                            data.description = e.target.value
+                            setEditValue(JSON.stringify(data))
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Défi</label>
+                        <input
+                          type="text"
+                          className="input"
+                          defaultValue={sit.challenge}
+                          onChange={(e) => {
+                            const data = JSON.parse(editValue)
+                            data.challenge = e.target.value
+                            setEditValue(JSON.stringify(data))
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Comportement attendu</label>
+                        <input
+                          type="text"
+                          className="input"
+                          defaultValue={sit.expectedBehavior}
+                          onChange={(e) => {
+                            const data = JSON.parse(editValue)
+                            data.expectedBehavior = e.target.value
+                            setEditValue(JSON.stringify(data))
+                          }}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            const data = JSON.parse(editValue)
+                            handleSaveSituationFull(index, data)
+                          }}
+                          className="btn-primary text-sm"
+                          disabled={updateSheet.isPending}
+                        >
+                          Enregistrer
+                        </button>
+                        <button
+                          onClick={() => setEditingItem(null)}
+                          className="btn-secondary text-sm"
+                        >
+                          Annuler
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <span className="font-medium text-gray-500">Comportement attendu : </span>
-                      <span className="text-gray-700">{sit.expectedBehavior}</span>
-                    </div>
-                  </div>
+                  ) : (
+                    <>
+                      <h3 className="font-semibold text-gray-900 mb-2">{sit.title}</h3>
+                      <p className="text-gray-600 text-sm mb-2">{sit.description}</p>
+                      <div className="grid md:grid-cols-2 gap-4 mt-4 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-500">Défi : </span>
+                          <span className="text-gray-700">{sit.challenge}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-500">Comportement attendu : </span>
+                          <span className="text-gray-700">{sit.expectedBehavior}</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -332,6 +505,17 @@ export default function EditSheet() {
           {/* Flow tab */}
           {activeTab === 'flow' && (
             <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-medium text-gray-900">Déroulé pédagogique</h3>
+                <button
+                  onClick={() => openRegenerateModal('flow')}
+                  disabled={regenerateSection.isPending}
+                  className="btn-secondary text-sm"
+                >
+                  <SparklesIcon className="w-4 h-4 mr-1" />
+                  Régénérer avec l'IA
+                </button>
+              </div>
               {flow.map((phase, index) => (
                 <div
                   key={phase.id || index}
@@ -346,39 +530,149 @@ export default function EditSheet() {
                         {phase.duration} min
                       </span>
                     </div>
+                    {editingItem !== `flow-${index}` && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingItem(`flow-${index}`)
+                            setEditValue(JSON.stringify(phase))
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg"
+                          title="Modifier"
+                        >
+                          <PencilIcon className="w-4 h-4 text-gray-500" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            const updated = flow.filter((_, i) => i !== index)
+                            updateSheet.mutate({ flow: updated })
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg"
+                          title="Supprimer"
+                        >
+                          <TrashIcon className="w-4 h-4 text-gray-500" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {phase.activities?.length > 0 && (
-                    <div className="space-y-2">
-                      {phase.activities.map((activity: any, actIndex: number) => (
-                        <div key={actIndex} className="pl-4 border-l-2 border-gray-200">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-700">
-                              {activity.name}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              ({activity.duration} min, {activityTypeLabel(activity.type)})
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 mt-1">
-                            {activity.instructions}
-                          </p>
+                  {editingItem === `flow-${index}` ? (
+                    <div className="space-y-3 bg-gray-50 p-4 rounded-lg">
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="label">Nom de la phase</label>
+                          <input
+                            type="text"
+                            className="input"
+                            defaultValue={phase.name}
+                            onChange={(e) => {
+                              const data = JSON.parse(editValue)
+                              data.name = e.target.value
+                              setEditValue(JSON.stringify(data))
+                            }}
+                          />
                         </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {phase.materials?.length > 0 && (
-                    <div className="mt-3 flex items-center gap-2 text-sm">
-                      <span className="text-gray-500">Matériel :</span>
-                      <div className="flex flex-wrap gap-1">
-                        {phase.materials.map((m: string, i: number) => (
-                          <span key={i} className="badge bg-gray-100 text-gray-600">
-                            {m}
-                          </span>
-                        ))}
+                        <div>
+                          <label className="label">Durée (min)</label>
+                          <input
+                            type="number"
+                            className="input"
+                            defaultValue={phase.duration}
+                            onChange={(e) => {
+                              const data = JSON.parse(editValue)
+                              data.duration = parseInt(e.target.value) || 0
+                              setEditValue(JSON.stringify(data))
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label">Notes formateur</label>
+                        <textarea
+                          className="input"
+                          rows={2}
+                          defaultValue={phase.trainerNotes || ''}
+                          placeholder="Notes pour le formateur..."
+                          onChange={(e) => {
+                            const data = JSON.parse(editValue)
+                            data.trainerNotes = e.target.value
+                            setEditValue(JSON.stringify(data))
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Matériel (séparé par virgules)</label>
+                        <input
+                          type="text"
+                          className="input"
+                          defaultValue={(phase.materials || []).join(', ')}
+                          onChange={(e) => {
+                            const data = JSON.parse(editValue)
+                            data.materials = e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)
+                            setEditValue(JSON.stringify(data))
+                          }}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            const data = JSON.parse(editValue)
+                            handleSavePhase(index, data)
+                          }}
+                          className="btn-primary text-sm"
+                          disabled={updateSheet.isPending}
+                        >
+                          Enregistrer
+                        </button>
+                        <button
+                          onClick={() => setEditingItem(null)}
+                          className="btn-secondary text-sm"
+                        >
+                          Annuler
+                        </button>
                       </div>
                     </div>
+                  ) : (
+                    <>
+                      {phase.activities?.length > 0 && (
+                        <div className="space-y-2">
+                          {phase.activities.map((activity: any, actIndex: number) => (
+                            <div key={actIndex} className="pl-4 border-l-2 border-gray-200">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-gray-700">
+                                  {activity.name}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  ({activity.duration} min, {activityTypeLabel(activity.type)})
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-600 mt-1">
+                                {activity.instructions}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {phase.trainerNotes && (
+                        <div className="mt-3 p-2 bg-yellow-50 rounded text-sm text-yellow-800">
+                          💡 {phase.trainerNotes}
+                        </div>
+                      )}
+
+                      {phase.materials?.length > 0 && (
+                        <div className="mt-3 flex items-center gap-2 text-sm">
+                          <span className="text-gray-500">Matériel :</span>
+                          <div className="flex flex-wrap gap-1">
+                            {phase.materials.map((m: string, i: number) => (
+                              <span key={i} className="badge bg-gray-100 text-gray-600">
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
@@ -388,38 +682,117 @@ export default function EditSheet() {
           {/* Evaluation tab */}
           {activeTab === 'evaluation' && (
             <div className="space-y-6">
-              {evaluation.method && (
-                <div>
-                  <label className="label">Méthode d'évaluation</label>
-                  <p className="text-gray-900">{evaluation.method}</p>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-medium text-gray-900">Évaluation</h3>
+                <div className="flex items-center gap-2">
+                  {editingItem !== 'evaluation' && (
+                    <button
+                      onClick={() => {
+                        setEditingItem('evaluation')
+                        setEditValue(JSON.stringify(evaluation))
+                      }}
+                      className="btn-secondary text-sm"
+                    >
+                      <PencilIcon className="w-4 h-4 mr-1" />
+                      Modifier
+                    </button>
+                  )}
+                  <button
+                    onClick={() => openRegenerateModal('evaluation')}
+                    disabled={regenerateSection.isPending}
+                    className="btn-secondary text-sm"
+                  >
+                    <SparklesIcon className="w-4 h-4 mr-1" />
+                    Régénérer avec l'IA
+                  </button>
                 </div>
-              )}
+              </div>
 
-              {evaluation.criteria?.length > 0 && (
-                <div>
-                  <label className="label">Critères d'évaluation</label>
-                  <div className="space-y-2">
-                    {evaluation.criteria.map((c: any, i: number) => (
-                      <div key={i} className="p-3 bg-gray-50 rounded-lg">
-                        <p className="font-medium text-gray-900">{c.criterion}</p>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Observable : {c.observable}
-                        </p>
-                      </div>
-                    ))}
+              {editingItem === 'evaluation' ? (
+                <div className="space-y-4 bg-gray-50 p-4 rounded-lg">
+                  <div>
+                    <label className="label">Méthode d'évaluation</label>
+                    <input
+                      type="text"
+                      className="input"
+                      defaultValue={evaluation.method || ''}
+                      onChange={(e) => {
+                        const data = JSON.parse(editValue)
+                        data.method = e.target.value
+                        setEditValue(JSON.stringify(data))
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Indicateurs de réussite (un par ligne)</label>
+                    <textarea
+                      className="input"
+                      rows={4}
+                      defaultValue={(evaluation.successIndicators || []).join('\n')}
+                      onChange={(e) => {
+                        const data = JSON.parse(editValue)
+                        data.successIndicators = e.target.value.split('\n').filter(Boolean)
+                        setEditValue(JSON.stringify(data))
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const data = JSON.parse(editValue)
+                        handleSaveEvaluation(data)
+                      }}
+                      className="btn-primary text-sm"
+                      disabled={updateSheet.isPending}
+                    >
+                      Enregistrer
+                    </button>
+                    <button
+                      onClick={() => setEditingItem(null)}
+                      className="btn-secondary text-sm"
+                    >
+                      Annuler
+                    </button>
                   </div>
                 </div>
-              )}
+              ) : (
+                <>
+                  {evaluation.method && (
+                    <div>
+                      <label className="label">Méthode d'évaluation</label>
+                      <p className="text-gray-900">{evaluation.method}</p>
+                    </div>
+                  )}
 
-              {evaluation.successIndicators?.length > 0 && (
-                <div>
-                  <label className="label">Indicateurs de réussite</label>
-                  <ul className="list-disc list-inside text-gray-700 space-y-1">
-                    {evaluation.successIndicators.map((ind: string, i: number) => (
-                      <li key={i}>{ind}</li>
-                    ))}
-                  </ul>
-                </div>
+                  {evaluation.criteria?.length > 0 && (
+                    <div>
+                      <label className="label">Critères d'évaluation</label>
+                      <div className="space-y-2">
+                        {evaluation.criteria.map((c: any, i: number) => (
+                          <div key={i} className="p-3 bg-gray-50 rounded-lg">
+                            <p className="font-medium text-gray-900">{c.criterion}</p>
+                            <p className="text-sm text-gray-600 mt-1">
+                              Observable : {c.observable}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {evaluation.successIndicators?.length > 0 && (
+                    <div>
+                      <label className="label">Indicateurs de réussite</label>
+                      <ul className="list-disc list-inside text-gray-700 space-y-1">
+                        {evaluation.successIndicators.map((ind: string, i: number) => (
+                          <li key={i}>{ind}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -457,6 +830,67 @@ export default function EditSheet() {
           )}
         </div>
       </div>
+
+      {/* Regeneration Modal */}
+      {regenerateModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                🔄 Régénérer {sectionLabel(regenerateModal.section)}
+              </h3>
+              <button
+                onClick={() => setRegenerateModal({ section: '', isOpen: false })}
+                className="p-1 hover:bg-gray-100 rounded-lg"
+              >
+                <XMarkIcon className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              L'IA va régénérer cette section en tenant compte du contexte de ta fiche.
+              Tu peux optionnellement donner des instructions spécifiques.
+            </p>
+
+            <div className="mb-4">
+              <label className="label">Instructions (optionnel)</label>
+              <textarea
+                className="input"
+                rows={3}
+                placeholder="Ex: Plus de focus sur le digital, situations plus complexes..."
+                value={regenerateInstructions}
+                onChange={(e) => setRegenerateInstructions(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setRegenerateModal({ section: '', isOpen: false })}
+                className="btn-secondary flex-1"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleRegenerate}
+                disabled={regenerateSection.isPending}
+                className="btn-primary flex-1"
+              >
+                {regenerateSection.isPending ? (
+                  <>
+                    <ArrowPathIcon className="w-4 h-4 mr-2 animate-spin" />
+                    Régénération...
+                  </>
+                ) : (
+                  <>
+                    <SparklesIcon className="w-4 h-4 mr-2" />
+                    Régénérer
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -479,4 +913,14 @@ function activityTypeLabel(type: string): string {
     practice: 'mise en pratique'
   }
   return labels[type] || type
+}
+
+function sectionLabel(section: string): string {
+  const labels: Record<string, string> = {
+    objectives: 'Objectifs',
+    situations: 'Situations',
+    flow: 'Déroulé',
+    evaluation: 'Évaluation'
+  }
+  return labels[section] || section
 }

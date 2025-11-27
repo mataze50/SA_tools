@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import CreateSheet from './pages/CreateSheet'
 import EditSheet from './pages/EditSheet'
 import Generation from './pages/Generation'
+import ReviewWizard from './pages/ReviewWizard'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="create" element={<CreateSheet />} />
         <Route path="generate/:sessionId" element={<Generation />} />
         <Route path="sheet/:id" element={<EditSheet />} />
+        <Route path="sheet/:sheetId/review" element={<ReviewWizard />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

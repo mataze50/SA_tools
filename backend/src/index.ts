@@ -12,6 +12,7 @@ import { generationRouter } from './routes/generation.js';
 import { quizRouter } from './routes/quiz.js';
 import { exportRouter } from './routes/export.js';
 import { dashboardRouter } from './routes/dashboard.js';
+import { validationRouter } from './routes/validation.js';
 
 dotenv.config();
 
@@ -40,6 +41,7 @@ app.use('/api/generation', generationRouter);
 app.use('/api/quiz', quizRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/validation', validationRouter);
 
 // Error handling
 app.use(errorHandler);

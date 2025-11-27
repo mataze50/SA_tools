@@ -473,4 +473,188 @@ Crée 10 questions:
 \`\`\``;
 }
 
+/**
+ * Section Regenerator - Regenerates a specific section with custom instructions
+ */
+export async function regenerateSection(
+  sheet: GeneratedSheet,
+  section: 'objectives' | 'situations' | 'flow' | 'evaluation',
+  context: GenerationContext,
+  instructions?: string
+): Promise<Partial<GeneratedSheet>> {
+  const prompt = buildSectionRegeneratorPrompt(sheet, section, context, instructions);
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 4000,
+    messages: [
+      {
+        role: 'user',
+        content: prompt
+      }
+    ]
+  });
+
+  const content = response.content[0];
+  if (content.type !== 'text') {
+    throw new Error('Unexpected response type from Claude');
+  }
+
+  const jsonMatch = content.text.match(/```json\n([\s\S]*?)\n```/);
+  if (!jsonMatch) {
+    throw new Error('Failed to parse regenerated section from response');
+  }
+
+  return JSON.parse(jsonMatch[1]);
+}
+
+function buildSectionRegeneratorPrompt(
+  sheet: GeneratedSheet,
+  section: 'objectives' | 'situations' | 'flow' | 'evaluation',
+  context: GenerationContext,
+  instructions?: string
+): string {
+  const sectionConfigs = {
+    objectives: {
+      name: 'OBJECTIFS PÉDAGOGIQUES',
+      description: 'Régénère les objectifs pédagogiques selon la taxonomie de Bloom',
+      format: `{
+  "objectives": [
+    {
+      "id": "obj1",
+      "text": "Être capable de...",
+      "bloomLevel": "Analyse",
+      "verb": "analyser",
+      "isConform": true
+    }
+  ]
+}`
+    },
+    situations: {
+      name: 'SITUATIONS PROFESSIONNELLES',
+      description: 'Régénère les situations professionnelles réalistes et ancrées dans le secteur',
+      format: `{
+  "situations": [
+    {
+      "id": "sit1",
+      "title": "Titre de la situation",
+      "description": "Description détaillée...",
+      "challenge": "Le défi à relever...",
+      "expectedBehavior": "Comportement attendu..."
+    }
+  ]
+}`
+    },
+    flow: {
+      name: 'DÉROULÉ PÉDAGOGIQUE',
+      description: 'Régénère le déroulé pédagogique avec phases et activités',
+      format: `{
+  "flow": [
+    {
+      "id": "phase1",
+      "name": "Accueil",
+      "duration": 5,
+      "objectives": ["Créer un climat de confiance"],
+      "activities": [
+        {
+          "name": "Tour de table",
+          "type": "plenary",
+          "duration": 5,
+          "instructions": "..."
+        }
+      ],
+      "materials": ["Paperboard", "Post-its"]
+    }
+  ]
+}`
+    },
+    evaluation: {
+      name: 'ÉVALUATION',
+      description: 'Régénère les critères et méthodes d\'évaluation',
+      format: `{
+  "evaluation": {
+    "criteria": [
+      {
+        "objectiveId": "obj1",
+        "criterion": "Capacité à...",
+        "observable": "Le participant..."
+      }
+    ],
+    "method": "Observation + Auto-évaluation",
+    "successIndicators": ["80% des participants..."]
+  }
+}`
+    }
+  };
+
+  const config = sectionConfigs[section];
+
+  return `Tu es un expert en ingénierie pédagogique. Régénère UNIQUEMENT la section "${config.name}" de cette fiche d'atelier.
+
+## CONTEXTE DE LA FICHE
+
+**Compétence visée**: ${context.competencyCode} - ${context.competencyTitle}
+**Secteur**: ${context.sector}
+**Public cible**: ${context.audienceType}
+**Format**: ${context.format}
+**Durée**: ${context.duration} minutes
+
+## FICHE ACTUELLE (pour référence)
+
+**Objectifs actuels**:
+${sheet.objectives.map(o => `- ${o.text} (${o.bloomLevel})`).join('\n')}
+
+**Situations actuelles**:
+${sheet.situations.map(s => `- ${s.title}: ${s.description.substring(0, 100)}...`).join('\n')}
+
+**Déroulé actuel**:
+${sheet.flow.map(p => `- ${p.name} (${p.duration} min)`).join('\n')}
+
+## TÂCHE
+
+${config.description}
+
+${instructions ? `
+## INSTRUCTIONS SPÉCIFIQUES DE L'UTILISATEUR
+
+"${instructions}"
+
+IMPORTANT: Respecte ces instructions pour la régénération.
+` : ''}
+
+## CONTRAINTES
+
+${section === 'objectives' ? `
+- 2-4 objectifs maximum
+- Utilise la taxonomie de Bloom (niveaux 3-6 recommandés)
+- Format: "Être capable de [VERBE ACTION] + [OBJET] + [CONTEXTE]"
+- Critères SMART appliqués
+` : ''}
+${section === 'situations' ? `
+- 3-5 situations professionnelles
+- Réalistes et ancrées dans le secteur "${context.sector}"
+- Adaptées au public "${context.audienceType}"
+- Chaque situation avec titre, description, défi, comportement attendu
+` : ''}
+${section === 'flow' ? `
+- Total = ${context.duration} minutes EXACTEMENT
+- Phases classiques: Accueil, Découverte, Appropriation, Application, Synthèse
+- Variété de modalités (individuel, groupe, plénière)
+- Aligné avec les objectifs existants
+` : ''}
+${section === 'evaluation' ? `
+- Critères alignés sur chaque objectif de la fiche
+- Indicateurs observables et mesurables
+- Méthode adaptée au format "${context.format}"
+` : ''}
+
+## FORMAT DE SORTIE
+
+Réponds UNIQUEMENT avec un bloc JSON valide contenant la section régénérée:
+
+\`\`\`json
+${config.format}
+\`\`\``;
+}
+
 export { anthropic };

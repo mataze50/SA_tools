@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { generationApi } from '../lib/api'
+import { useGenerationPolling } from '../hooks/useGenerationStream'
 import {
   CheckCircleIcon,
   XCircleIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  HandThumbUpIcon,
+  HandThumbDownIcon
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -23,44 +26,54 @@ export default function Generation() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
   const [sheetTitle, setSheetTitle] = useState('')
+  const [createdSheetId, setCreatedSheetId] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<Record<string, 'up' | 'down'>>({})
 
-  // Poll generation status
-  const { data: statusData, isLoading, error } = useQuery({
-    queryKey: ['generation', sessionId],
-    queryFn: () => generationApi.status(sessionId!),
-    refetchInterval: (query) => {
-      const status = query.state.data?.data?.data?.status
-      if (status === 'COMPLETED' || status === 'FAILED') {
-        return false
-      }
-      return 2000 // Poll every 2 seconds
-    },
-    enabled: !!sessionId
-  })
+  // Use polling hook for generation status (faster updates)
+  const { data: streamData, isLoading, error } = useGenerationPolling(sessionId)
 
-  const status = statusData?.data?.data?.status || 'PENDING'
-  const progress = statusData?.data?.data?.progress || { step: 0, totalSteps: 6 }
-  const generatedContent = statusData?.data?.data?.generatedContent
+  const status = streamData?.status || 'PENDING'
+  const progress = streamData?.progress || { step: 0, totalSteps: 6, label: '', estimatedTimeRemaining: '~45s' }
+  const generatedContent = streamData?.generatedContent || streamData?.finalContent
 
   // Create sheet from completed generation
   const createSheet = useMutation({
     mutationFn: () => generationApi.createSheet(sessionId!, sheetTitle || undefined),
     onSuccess: (res) => {
       const sheetId = res.data.data.id
+      setCreatedSheetId(sheetId)
       toast.success('Fiche créée avec succès !')
-      navigate(`/sheet/${sheetId}`)
     },
     onError: () => {
       toast.error('Erreur lors de la création de la fiche')
     }
   })
 
+  const goToEditor = () => {
+    if (createdSheetId) {
+      navigate(`/sheet/${createdSheetId}`)
+    }
+  }
+
+  const goToReview = () => {
+    if (createdSheetId) {
+      navigate(`/sheet/${createdSheetId}/review`)
+    }
+  }
+
+  const handleFeedback = (itemId: string, type: 'up' | 'down') => {
+    setFeedback(prev => ({
+      ...prev,
+      [itemId]: prev[itemId] === type ? undefined : type
+    } as any))
+  }
+
   // Set default title from generated content
   useEffect(() => {
     if (generatedContent?.title && !sheetTitle) {
       setSheetTitle(generatedContent.title)
     }
-  }, [generatedContent])
+  }, [generatedContent, sheetTitle])
 
   const currentStepIndex = pipelineSteps.findIndex((s) => s.id === status)
 
@@ -147,7 +160,117 @@ export default function Generation() {
           })}
         </div>
 
-        {/* Preview of generated content */}
+        {/* Live preview during generation */}
+        {generatedContent && status !== 'COMPLETED' && status !== 'FAILED' && (
+          <div className="border-t pt-6 mb-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              👀 Aperçu en temps réel
+              <span className="text-xs font-normal text-gray-500">(tu peux réagir !)</span>
+            </h2>
+
+            {/* Preview objectives as they're generated */}
+            {generatedContent.objectives?.length > 0 && (
+              <div className="space-y-3">
+                {generatedContent.objectives.slice(0, 2).map((obj: any, i: number) => (
+                  <div
+                    key={obj.id || i}
+                    className="p-3 bg-gray-50 rounded-lg border border-gray-200 animate-slide-in"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <span className="text-xs font-medium text-primary-600">
+                          OBJECTIF {i + 1}
+                        </span>
+                        <p className="text-sm text-gray-700 mt-1">{obj.text}</p>
+                        {obj.bloomLevel && (
+                          <span className="text-xs text-gray-500 mt-1">
+                            Niveau: {obj.bloomLevel}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleFeedback(`obj-${i}`, 'up')}
+                          className={clsx(
+                            'p-1.5 rounded-lg transition-colors',
+                            feedback[`obj-${i}`] === 'up'
+                              ? 'bg-green-100 text-green-600'
+                              : 'hover:bg-gray-200 text-gray-400'
+                          )}
+                        >
+                          <HandThumbUpIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleFeedback(`obj-${i}`, 'down')}
+                          className={clsx(
+                            'p-1.5 rounded-lg transition-colors',
+                            feedback[`obj-${i}`] === 'down'
+                              ? 'bg-red-100 text-red-600'
+                              : 'hover:bg-gray-200 text-gray-400'
+                          )}
+                        >
+                          <HandThumbDownIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Preview situations as they're generated */}
+            {generatedContent.situations?.length > 0 && (
+              <div className="mt-4 space-y-3">
+                {generatedContent.situations.slice(0, 1).map((sit: any, i: number) => (
+                  <div
+                    key={sit.id || i}
+                    className="p-3 bg-gray-50 rounded-lg border border-gray-200 animate-slide-in"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <span className="text-xs font-medium text-orange-600">
+                          SITUATION {i + 1}
+                        </span>
+                        <p className="text-sm font-medium text-gray-800 mt-1">{sit.title}</p>
+                        <p className="text-xs text-gray-600 mt-1 line-clamp-2">{sit.description}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleFeedback(`sit-${i}`, 'up')}
+                          className={clsx(
+                            'p-1.5 rounded-lg transition-colors',
+                            feedback[`sit-${i}`] === 'up'
+                              ? 'bg-green-100 text-green-600'
+                              : 'hover:bg-gray-200 text-gray-400'
+                          )}
+                        >
+                          <HandThumbUpIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleFeedback(`sit-${i}`, 'down')}
+                          className={clsx(
+                            'p-1.5 rounded-lg transition-colors',
+                            feedback[`sit-${i}`] === 'down'
+                              ? 'bg-red-100 text-red-600'
+                              : 'hover:bg-gray-200 text-gray-400'
+                          )}
+                        >
+                          <HandThumbDownIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-xs text-gray-500 mt-4 text-center">
+              💡 Tes réactions aident l'IA à mieux comprendre tes préférences
+            </p>
+          </div>
+        )}
+
+        {/* Completed preview */}
         {generatedContent && status === 'COMPLETED' && (
           <div className="border-t pt-6">
             <h2 className="font-semibold text-gray-900 mb-4">
@@ -225,16 +348,62 @@ export default function Generation() {
               />
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => createSheet.mutate()}
-                disabled={createSheet.isPending}
-                className="btn-primary flex-1"
-              >
-                {createSheet.isPending ? 'Création...' : 'Continuer vers l\'éditeur'}
-              </button>
-            </div>
+            {/* Actions - before sheet creation */}
+            {!createdSheetId && (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => createSheet.mutate()}
+                  disabled={createSheet.isPending}
+                  className="btn-primary flex-1"
+                >
+                  {createSheet.isPending ? 'Création...' : 'Créer la fiche'}
+                </button>
+              </div>
+            )}
+
+            {/* Actions - after sheet creation */}
+            {createdSheetId && (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 text-center">
+                  🎉 Fiche créée ! Que veux-tu faire ?
+                </p>
+
+                {generatedContent.confidenceScore < 85 ? (
+                  <>
+                    {/* Low confidence - recommend review */}
+                    <button
+                      onClick={goToReview}
+                      className="btn-primary w-full"
+                    >
+                      👀 Passer en revue avec l'IA
+                      <span className="text-xs ml-2 opacity-75">(recommandé)</span>
+                    </button>
+                    <button
+                      onClick={goToEditor}
+                      className="btn-secondary w-full"
+                    >
+                      ✏️ Aller directement à l'éditeur
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {/* High confidence - can go directly to editor */}
+                    <button
+                      onClick={goToEditor}
+                      className="btn-primary w-full"
+                    >
+                      ✏️ Continuer vers l'éditeur
+                    </button>
+                    <button
+                      onClick={goToReview}
+                      className="btn-secondary w-full"
+                    >
+                      👀 Voir les suggestions d'amélioration
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             <p className="text-xs text-gray-500 text-center mt-4">
               💡 Tu pourras modifier tous les contenus dans l'éditeur
